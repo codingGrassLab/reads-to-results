@@ -230,7 +230,7 @@ const description = "Real DESeq2 (R, compiled to WebAssembly) running inside thi
         say(`${r.log}\nDone in ${((performance.now() - t0) / 1000).toFixed(0)} s: ${r.nTested.toLocaleString("en-US")} genes tested, ${r.nUp} up, ${r.nDown} down at padj < ${cfg.alpha}.`);
         $("[data-stats]").innerHTML = [[r.nGenes, "genes in matrix"], [r.nAfterFilter, "after filter"], [r.nTested, "tested"], [r.nUp, "up"], [r.nDown, "down"]].map(([v, l]) => `<div class="stat"><b>${(v as number).toLocaleString("en-US")}</b><span>${l}</span></div>`).join("");
         $("[data-versions]").textContent = `DESeq2 ${r.versions.deseq2}${r.versions.apeglm && r.versions.apeglm !== "NA" ? `, apeglm ${r.versions.apeglm}` : ""}, R ${r.versions.r} (webR). Size factors: ${Object.entries(r.sizeFactors).map(([k, v]) => `${k} ${v.toFixed(2)}`).join(", ")}.`;
-        const rows = r.resultsCSV.trim().split("\n").slice(1, 11).map((l) => l.split(","));
+        const rows = r.resultsCSV.trim().split("\n").slice(1, 11).map((l) => l.split(",").map((x) => x.replace(/^"|"$/g, "")));
         $("[data-top]").innerHTML = rows.map((c) => `<tr><td><code>${c[0]}</code></td><td class="num">${(+c[1]).toFixed(1)}</td><td class="num">${(+c[2]).toFixed(2)}</td><td class="num">${(+c[5]).toExponential(1)}</td><td class="num">${(+c[6]).toExponential(1)}</td></tr>`).join("");
         try { sessionStorage.setItem("rr-results", JSON.stringify({ name: `deseq2_results_${cfg.trtLevel}_vs_${cfg.refLevel}.csv`, text: r.resultsCSV })); } catch {}
         $<HTMLElement>("[data-out]").hidden = false;
