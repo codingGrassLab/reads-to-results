@@ -9,7 +9,6 @@
     "preview": "astro preview",
     "analysis": "Rscript analysis/run.R",
     "test": "node scripts/test-data.mjs",
-    "test:script": "node scripts/test-script.mjs",
     "test:hub": "node scripts/test-hub.mjs"
   },
   "dependencies": {

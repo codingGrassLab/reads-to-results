@@ -56,7 +56,6 @@ const organisms: [string, string][] = [["", "any organism"], ["Homo sapiens", "h
         <button type="button" class="btn btn-ghost" data-dl="bash">download.sh (SRA Toolkit, Linux/macOS/WSL)</button>
         <button type="button" class="btn btn-ghost" data-dl="ps1">download.ps1 (SRA Toolkit, Windows)</button>
         <button type="button" class="btn btn-ghost" data-dl="salmon">quantify.sh (fastp + Salmon)</button>
-        <a class="btn btn-ghost" data-script-link href="#">Open the script generator with these columns →</a>
       </div>
 
       <details class="ds-preview"><summary class="small">Preview download.sh</summary><pre><code data-preview></code></pre></details>
@@ -216,9 +215,6 @@ const organisms: [string, string][] = [["", "any organism"], ["Homo sapiens", "h
       const gb = on.reduce((a, r) => a + r.bytes.reduce((x, y) => x + y, 0), 0) / 1e9, reads = on.reduce((a, r) => a + r.reads, 0) / 1e6;
       const conds = [...new Set(on.map((r) => r.condition).filter(Boolean))];
       $("[data-stats]").innerHTML = [[on.length, "runs selected"], [new Set(on.map((r) => r.sample)).size, "biological samples"], [reads.toFixed(0), "million reads"], [gb.toFixed(1), "GB (SRA archives)"], [conds.length || "–", `conditions${conds.length ? ": " + conds.join(", ") : ""}`]].map(([v, l]) => `<div class="stat"><b>${v}</b><span>${esc(String(l))}</span></div>`).join("");
-      const a = $<HTMLAnchorElement>("[data-script-link]");
-      const p = new URLSearchParams({ input: "salmon", sampleCol: "sample", conditionCol: "condition", batchCol: on.some((r) => r.batch) ? "batch" : "", refLevel: conds[0] ?? "", trtLevel: conds[1] ?? "", minSamples: String(Math.max(1, Math.min(...conds.map((c) => on.filter((r) => r.condition === c).length).concat([3])))) });
-      a.href = `../script/?${p}`;
     }
     const esc = (s: string) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
     const sel = () => runs.filter((r) => r.on);
