@@ -3,7 +3,7 @@ import norm from "../data/normalization.json";
 import type { Lang } from "../i18n/ui";
 interface Props { lang: Lang }
 const { lang } = Astro.props;
-const txt = { en: { raw: "raw counts", norm: "after size-factor normalization", y: "log2(count + 1)", box: "box: 25th to 75th percentile; line: median; whiskers: 5th and 95th", libsize: "library size", sf: "size factor" }, bn: { raw: "raw count", norm: "size factor দিয়ে normalize করার পর", y: "log2(count + 1)", box: "বাক্স: ২৫ থেকে ৭৫ percentile; রেখা: median; whisker: ৫ আর ৯৫", libsize: "library size", sf: "size factor" } }[lang];
+const txt = { en: { raw: "raw counts", norm: "after size-factor normalization", y: "log2(count + 1)", box: "box: 25th to 75th percentile; line: median; whiskers: 5th and 95th", libsize: "library size", sf: "size factor" } }[lang];
 ---
 <figure>
   <div class="controls" role="radiogroup">

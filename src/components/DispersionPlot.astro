@@ -2,7 +2,7 @@
 import type { Lang } from "../i18n/ui";
 interface Props { lang: Lang }
 const { lang } = Astro.props;
-const txt = { en: { gene: "gene-wise estimate", fit: "fitted trend", final: "final (shrunk toward the trend)", x: "mean of normalized counts (log10)", y: "dispersion (log10)", loading: "Loading…", fail: "Could not load the data file.", sample: "A random 3,000 of the tested genes are shown." }, bn: { gene: "gene-wise estimate", fit: "fitted trend", final: "final (trend-এর দিকে shrink করা)", x: "normalized count-এর গড় (log10)", y: "dispersion (log10)", loading: "লোড হচ্ছে…", fail: "ডেটা ফাইল লোড করা যায়নি।", sample: "tested gene থেকে এলোমেলোভাবে বাছা ৩,০০০টা দেখানো হয়েছে।" } }[lang];
+const txt = { en: { gene: "gene-wise estimate", fit: "fitted trend", final: "final (shrunk toward the trend)", x: "mean of normalized counts (log10)", y: "dispersion (log10)", loading: "Loading…", fail: "Could not load the data file.", sample: "A random 3,000 of the tested genes are shown." } }[lang];
 ---
 <figure>
   <div class="plot" data-plot="disp"><script type="application/json" set:html={JSON.stringify(txt)} /><div class="status">{txt.loading}</div>

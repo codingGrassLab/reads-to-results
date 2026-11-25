@@ -3,7 +3,7 @@ import hm from "../data/heatmap.json";
 import type { Lang } from "../i18n/ui";
 interface Props { lang: Lang }
 const { lang } = Astro.props;
-const txt = { en: { z: "z-score of the VST value, per gene", trt: "dex", untrt: "untreated", hi: "higher than the gene's mean", lo: "lower" }, bn: { z: "প্রতিটা gene-এর VST value-এর z-score", trt: "dex", untrt: "untreated", hi: "gene-এর গড়ের চেয়ে বেশি", lo: "কম" } }[lang];
+const txt = { en: { z: "z-score of the VST value, per gene", trt: "dex", untrt: "untreated", hi: "higher than the gene's mean", lo: "lower" } }[lang];
 ---
 <figure>
   <div class="plot" data-plot="heat"><script type="application/json" set:html={JSON.stringify({ ...hm, txt })} />

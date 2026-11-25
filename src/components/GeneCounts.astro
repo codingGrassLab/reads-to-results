@@ -3,7 +3,7 @@ import gc from "../data/gene_counts.json";
 import type { Lang } from "../i18n/ui";
 interface Props { lang: Lang }
 const { lang } = Astro.props;
-const txt = { en: { y: "normalized count (log scale)", trt: "dexamethasone", untrt: "untreated", line: "lines join the two samples of one cell line" }, bn: { y: "normalized count (log scale)", trt: "dexamethasone", untrt: "untreated", line: "একটা cell line-এর দুটো sample রেখা দিয়ে জোড়া" } }[lang];
+const txt = { en: { y: "normalized count (log scale)", trt: "dexamethasone", untrt: "untreated", line: "lines join the two samples of one cell line" } }[lang];
 ---
 <figure>
   <div class="plot" data-plot="gene"><script type="application/json" set:html={JSON.stringify({ ...gc, txt })} /><div class="legend"><span class="muted">{txt.line}</span></div></div>

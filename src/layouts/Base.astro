@@ -1,7 +1,7 @@
 ---
 import "../styles/global.css";
 import Mark from "../components/Mark.astro";
-import { languages, langs, t, path, switchLang, asset, type Lang } from "../i18n/ui";
+import { t, path, asset, type Lang } from "../i18n/ui";
 
 interface Props {
   lang: Lang;
@@ -30,8 +30,6 @@ const nav = [
   { key: "read", href: path(lang, "read"), label: t(lang, "nav.read") },
   { key: "about", href: path(lang, "about"), label: t(lang, "nav.about") },
 ];
-const shortLang: Record<Lang, string> = { en: "EN" };
-const multi = langs.length > 1;
 const year = new Date().getFullYear();
 ---
 <!doctype html>
@@ -43,8 +41,6 @@ const year = new Date().getFullYear();
     <meta name="description" content={desc} />
     {noindex && <meta name="robots" content="noindex, follow" />}
     {!noindex && <link rel="canonical" href={canonical} />}
-    {!noindex && langs.map((l) => <link rel="alternate" hreflang={l} href={new URL(switchLang(pathname, l), Astro.site)} />)}
-    {!noindex && <link rel="alternate" hreflang="x-default" href={new URL(switchLang(pathname, "en"), Astro.site)} />}
     <meta name="theme-color" content="#fbfbf9" />
     <link rel="icon" type="image/svg+xml" href={asset("/favicon.svg")} />
     <meta property="og:type" content="website" />
@@ -68,9 +64,6 @@ const year = new Date().getFullYear();
         <a class="brand" href={path(lang)} aria-label={siteName}><Mark size={30} /><span>{siteName}</span></a>
         <nav class="nav" aria-label="Main">
           <ul>{nav.map((n) => <li><a href={n.href} aria-current={active === n.key ? "page" : undefined}>{n.label}</a></li>)}</ul>
-          {multi && <div class="lang" role="group" aria-label={t(lang, "nav.language")}>
-            {langs.map((l) => <a href={switchLang(pathname, l)} hreflang={l} lang={l} aria-current={l === lang ? "true" : undefined} title={languages[l]}>{shortLang[l]}</a>)}
-          </div>}
         </nav>
         <button class="menu-btn" type="button" aria-expanded="false" aria-controls="mobile-nav" data-menu>
           <span class="sr">{t(lang, "nav.menu")}</span>
@@ -82,9 +75,6 @@ const year = new Date().getFullYear();
           <li><a href={path(lang)} aria-current={active === "home" ? "page" : undefined}>{t(lang, "nav.home")}</a></li>
           {nav.map((n) => <li><a href={n.href} aria-current={active === n.key ? "page" : undefined}>{n.label}</a></li>)}
         </ul>
-        {multi && <div class="lang" role="group" aria-label={t(lang, "nav.language")}>
-          {langs.map((l) => <a href={switchLang(pathname, l)} hreflang={l} lang={l} aria-current={l === lang ? "true" : undefined}>{languages[l]}</a>)}
-        </div>}
       </div>
     </header>
 

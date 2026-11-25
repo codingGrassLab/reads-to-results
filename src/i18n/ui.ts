@@ -1,7 +1,6 @@
 export const languages = { en: "English" } as const;
 export type Lang = keyof typeof languages;
 export const langs = Object.keys(languages) as Lang[];
-export const defaultLang: Lang = "en";
 
 /** Text that exists in both languages. */
 export type T = Record<Lang, string>;
@@ -19,21 +18,12 @@ const ui = {
     "nav.read": "Reading plots",
     "nav.about": "About",
     "nav.menu": "Menu",
-    "nav.language": "Language",
     "common.skip": "Skip to content",
     "common.next": "Next",
     "common.prev": "Previous",
-    "common.part": "Part",
     "common.lesson": "Lesson",
     "common.minutes": "min read",
     "common.toc": "In this lesson",
-    "common.download": "Download",
-    "common.source": "Source",
-    "common.figure": "Figure",
-    "common.hover": "Hover or tap a point for the gene name.",
-    "common.loading": "Loading data…",
-    "common.copy": "Copy",
-    "common.copied": "Copied",
     "home.eyebrow": "RNA-seq · DESeq2 · real data",
     "home.title": "From raw reads to a result you can defend",
     "home.lead":
@@ -77,13 +67,6 @@ export function path(lang: Lang, ...parts: string[]): string {
   return `${base}/${lang}/${p}${p ? "/" : ""}`;
 }
 
-/** The same page in another language. */
-export function switchLang(pathname: string, to: Lang): string {
-  const segs = (base && pathname.startsWith(base) ? pathname.slice(base.length) : pathname).split("/").filter(Boolean);
-  if (segs.length && (langs as string[]).includes(segs[0])) segs[0] = to;
-  else segs.unshift(to);
-  return base + "/" + segs.join("/") + "/";
-}
 
 /** Numbers shown in running text. */
 export function num(_lang: Lang, n: number | string): string {

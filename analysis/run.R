@@ -32,9 +32,7 @@ se <- airway
 se$dex <- relevel(se$dex, "untrt")
 coldata <- as.data.frame(colData(se))
 coldata <- coldata[, c("SampleName", "cell", "dex", "Run", "avgLength", "Experiment", "Sample", "BioSample")]
-write.csv(coldata, file.path(out_pub, "airway_samples.csv"))
 counts <- assay(se)
-write.csv(counts, gzfile(file.path(out_pub, "airway_counts.csv.gz")))
 
 samples <- data.frame(
   run = colnames(se), cell = as.character(se$cell), dex = as.character(se$dex),
@@ -50,11 +48,6 @@ read_examples <- lapply(1:3, function(i) list(
   name = reads$qname[i], flag = reads$flag[i], chrom = as.character(reads$rname[i]), pos = reads$pos[i],
   mapq = reads$mapq[i], cigar = reads$cigar[i], seq = as.character(reads$seq[i]), qual = as.character(reads$qual[i])
 ))
-bam_stats <- lapply(colnames(se), function(r) {
-  f <- file.path(extdir, paste0(r, "_subset.bam"))
-  cb <- countBam(f)
-  list(run = r, records = cb$records, nucleotides = cb$nucleotides)
-})
 
 # ── 3. Counting: reads per gene on the subset BAMs (the real counting step, small) ─
 gtf <- import(file.path(extdir, "Homo_sapiens.GRCh37.75_subset.gtf"))
@@ -189,7 +182,6 @@ universe <- tab$gene_id[!is.na(tab$padj)]
 ego <- enrichGO(gene = sig_ids, universe = universe, OrgDb = org.Hs.eg.db, keyType = "ENSEMBL", ont = "BP",
                 pAdjustMethod = "BH", pvalueCutoff = 0.05, qvalueCutoff = 0.05, readable = TRUE)
 ego_df <- as.data.frame(ego)
-write.csv(ego_df, file.path(out_pub, "airway_go_bp.csv"), row.names = FALSE)
 go_top <- head(ego_df, 20)
 go_json <- list(
   n_genes = length(sig_ids), n_universe = length(universe), n_terms = nrow(ego_df),
@@ -207,13 +199,8 @@ colors <- colorRampPalette(rev(brewer.pal(9, "Blues")))(255)
 ann <- data.frame(dex = colData(vsd)$dex, cell = colData(vsd)$cell, row.names = colnames(vsd))
 png_("sample-distances.png"); pheatmap(dist_mat, clustering_distance_rows = sampleDists, clustering_distance_cols = sampleDists, col = colors, annotation_col = ann); dev.off()
 png_("heatmap.png", 1600, 1800); pheatmap(mat_z, annotation_col = ann, labels_row = heatmap_json$symbols, fontsize_row = 9); dev.off()
-png_("dispersion.png"); plotDispEsts(dds); dev.off()
 png_("ma.png"); plotMA(res, ylim = c(-5, 5), alpha = 0.05, main = "MA plot (unshrunken)"); dev.off()
 png_("ma-shrunk.png"); plotMA(resLFC, ylim = c(-5, 5), alpha = 0.05, main = "MA plot (apeglm shrinkage)"); dev.off()
-png_("pvalue-hist.png"); hist(res$pvalue[res$baseMean > 1], breaks = 20, col = "grey70", border = "white", main = "p-values (genes with baseMean > 1)", xlab = "p-value"); dev.off()
-png_("counts-boxplot.png", 2000, 1100); par(mfrow = c(1, 2), mar = c(7, 4, 3, 1))
-boxplot(raw_log, las = 2, main = "log2(count + 1), raw", col = "grey85", cex.axis = 0.8)
-boxplot(norm_log, las = 2, main = "log2(normalized count + 1)", col = "#cfe3f5", cex.axis = 0.8); dev.off()
 png_("volcano.png", 1800, 1600); print(EnhancedVolcano(tab, lab = tab$symbol, x = "log2FoldChange", y = "padj", pCutoff = 0.05, FCcutoff = 1,
   title = "Dexamethasone vs untreated", subtitle = "airway, DESeq2", ylab = bquote(~-Log[10]~ "adjusted p"), labSize = 3.5, pointSize = 1.5, legendPosition = "bottom")); dev.off()
 png_("gene-counts.png", 1400, 1100); print(ggplot(cnt, aes(dex, count, color = cell, group = cell)) + geom_point(size = 3.5) + geom_line() +
@@ -221,7 +208,7 @@ png_("gene-counts.png", 1400, 1100); print(ggplot(cnt, aes(dex, count, color = c
 if (nrow(ego_df) > 0) { png_("go-dotplot.png", 1800, 1600); print(dotplot(ego, showCategory = 15) + theme(axis.text.y = element_text(size = 10))); dev.off() }
 
 # ── 8. Write everything ─────────────────────────────────────────────────────
-wj(samples, "samples.json"); wj(read_examples, "reads.json"); wj(bam_stats, "bam_stats.json")
+wj(samples, "samples.json"); wj(read_examples, "reads.json")
 wj(counting, "counting.json"); wj(counts_head, "counts_head.json")
 wj(summary_stats, "summary.json"); wj(top_genes, "top_genes.json")
 wj(pvalue_hist, "pvalue_hist.json"); wj(pca_json, "pca.json"); wj(distances, "distances.json"); wj(heatmap_json, "heatmap.json")
@@ -230,7 +217,6 @@ wj(normalization, "normalization.json"); wj(gene_counts, "gene_counts.json")
 write_json(volcano, file.path(out_pub, "volcano.json"), digits = NA, auto_unbox = TRUE, na = "null")
 write_json(dispersion, file.path(out_pub, "dispersion.json"), digits = NA, auto_unbox = TRUE, na = "null")
 wj(go_json, "go.json"); wj(paper_check, "paper_check.json")
-writeLines(capture.output(sessionInfo()), file.path(out_pub, "sessionInfo.txt"))
 pk <- c("DESeq2", "apeglm", "airway", "clusterProfiler", "org.Hs.eg.db", "GenomicAlignments", "pheatmap", "ggplot2", "EnhancedVolcano")
 wj(list(r = R.version.string, bioc = as.character(BiocManager::version()), packages = setNames(as.list(sapply(pk, function(p) as.character(packageVersion(p)))), pk),
         date = format(Sys.Date())), "versions.json")

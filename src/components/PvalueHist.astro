@@ -3,7 +3,7 @@ import hist from "../data/pvalue_hist.json";
 import type { Lang } from "../i18n/ui";
 interface Props { lang: Lang }
 const { lang } = Astro.props;
-const txt = { en: { x: "p-value", y: "number of genes", bin: "genes" }, bn: { x: "p-value", y: "gene-এর সংখ্যা", bin: "gene" } }[lang];
+const txt = { en: { x: "p-value", y: "number of genes", bin: "genes" } }[lang];
 ---
 <figure>
   <div class="plot" data-plot="phist"><script type="application/json" set:html={JSON.stringify({ ...hist, txt })} /></div>

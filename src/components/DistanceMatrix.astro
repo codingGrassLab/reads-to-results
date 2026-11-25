@@ -4,7 +4,7 @@ import samples from "../data/samples.json";
 import type { Lang } from "../i18n/ui";
 interface Props { lang: Lang }
 const { lang } = Astro.props;
-const txt = { en: { d: "Euclidean distance between the two samples' VST values", near: "similar", far: "different" }, bn: { d: "দুই sample-এর VST value-এর মধ্যে Euclidean distance", near: "কাছাকাছি", far: "আলাদা" } }[lang];
+const txt = { en: { d: "Euclidean distance between the two samples' VST values", near: "similar", far: "different" } }[lang];
 const meta = Object.fromEntries(samples.map((s) => [s.run, s]));
 ---
 <figure>

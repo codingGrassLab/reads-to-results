@@ -3,8 +3,7 @@ import type { Lang } from "../i18n/ui";
 interface Props { lang: Lang; mode?: "volcano" | "ma" }
 const { lang, mode = "volcano" } = Astro.props;
 const txt = {
-  en: { padj: "adjusted p threshold", lfc: "|log2 fold change| threshold", up: "up", down: "down", ns: "not significant", shrink: "apeglm-shrunken fold changes", loading: "Loading 18,000 genes…", fail: "Could not load the data file.", of: "of", genes: "genes", hover: "Hover or tap a point for the gene.", xlab: "log2 fold change (dex vs untreated)", ylab: "−log10 adjusted p", xma: "mean of normalized counts (log10)", yma: "log2 fold change" },
-  bn: { padj: "adjusted p-এর সীমা", lfc: "|log2 fold change|-এর সীমা", up: "বেড়েছে", down: "কমেছে", ns: "significant নয়", shrink: "apeglm-shrunken fold change", loading: "১৮,০০০ gene লোড হচ্ছে…", fail: "ডেটা ফাইল লোড করা যায়নি।", of: "/", genes: "gene", hover: "gene-এর নাম দেখতে বিন্দুর ওপর মাউস রাখুন বা ট্যাপ করুন।", xlab: "log2 fold change (dex বনাম untreated)", ylab: "−log10 adjusted p", xma: "normalized count-এর গড় (log10)", yma: "log2 fold change" },
+  en: { padj: "adjusted p threshold", lfc: "|log2 fold change| threshold", up: "up", down: "down", ns: "not significant", shrink: "apeglm-shrunken fold changes", loading: "Loading 15,826 genes…", fail: "Could not load the data file.", of: "of", genes: "genes", hover: "Hover or tap a point for the gene.", xlab: "log2 fold change (dex vs untreated)", ylab: "−log10 adjusted p", xma: "mean of normalized counts (log10)", yma: "log2 fold change" },
 }[lang];
 const id = `v${Math.random().toString(36).slice(2, 8)}`;
 ---
