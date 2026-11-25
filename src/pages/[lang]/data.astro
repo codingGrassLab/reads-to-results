@@ -67,8 +67,9 @@ const s = {
     <ul>
       <li><strong>Explore your results:</strong> up/down counts at several thresholds compared with R on DESeq2 (airway), edgeR, limma-voom and a simulated dataset; decimal-comma and tab-separated files.</li>
       <li><strong>Run DESeq2 in your browser:</strong> the airway example run inside the page (DESeq2 1.53 on webR) reproduces this site's R analysis exactly: 15,826 genes tested, 2,190 up and 1,891 down at adjusted p below 0.05, identical size factors and top genes.</li>
+      <li><strong>Run DESeq2 on a GEO series:</strong> GSE60450 (mouse mammary gland, 12 samples, the submitter's Entrez-ID count file with a Length column) fetched and matched to its GEO samples inside the page, then luminal vs basal with developmental stage as a covariate. Compared with a plain DESeq2 script in R on the desktop (DESeq2 1.50, apeglm 1.32): the same 14,537 genes tested, 5,221 up and 5,476 down, identical size factors and gene order; the largest per-gene difference is 3×10⁻⁸ in log2 fold change, 2×10⁻⁷ in p-value and 2×10⁻⁵ in the apeglm fold change. Column-to-sample matching checked on four other series (GSE226151 60/60, GSE164073 18/18, GSE123496 40 of 49 by name, the rest left for the user to assign).</li>
       <li><strong>Hub genes:</strong> Degree, Betweenness, Closeness, Radiality, EcCentricity, ClusteringCoefficient, MCC, MNC and DMNC are compared with networkx on random graphs, and Stress with brute-force shortest-path counting (<code>npm run test:hub</code>). EPC and BottleNeck follow cytoHubba's definitions (EPC with 1,000 random percolations).</li>
-      <li><strong>Dataset tool:</strong> run counts, layouts and sizes compared with independent NCBI SRA queries for several studies, and the "Use this dataset" path checked from GEO search results.</li>
+      <li><strong>Dataset tool:</strong> run counts, layouts and sizes compared with independent NCBI SRA queries for several studies, and the path from a GEO search result to the run page checked.</li>
       <li><strong>Enrichment:</strong> computed by g:Profiler; this site only filters and draws its output.</li>
     </ul>
 

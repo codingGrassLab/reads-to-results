@@ -52,11 +52,11 @@ const organisms: [string, string][] = [["", "any organism"], ["Homo sapiens", "h
       </table></div>
 
       <div class="ds-actions">
-        <button type="button" class="btn btn-primary" data-dl="samples">samples.csv</button>
+        <button type="button" class="btn btn-ghost" data-dl="samples">samples.csv</button>
         <button type="button" class="btn btn-ghost" data-dl="bash">download.sh (SRA Toolkit, Linux/macOS/WSL)</button>
         <button type="button" class="btn btn-ghost" data-dl="ps1">download.ps1 (SRA Toolkit, Windows)</button>
         <button type="button" class="btn btn-ghost" data-dl="salmon">quantify.sh (fastp + Salmon)</button>
-        <a class="btn btn-ghost" data-run-link href="../run/" title="Takes this sample sheet to the in-browser DESeq2 page; you still need a count matrix">Run DESeq2 here with this sheet →</a>
+        <a class="btn btn-primary" data-run-link href="../run/" title="Opens the in-browser DESeq2 page with this series: the GEO count matrix and sample metadata are fetched there">Run DESeq2 on this dataset →</a>
       </div>
 
       <details class="ds-preview"><summary class="small">Preview download.sh</summary><pre><code data-preview></code></pre></details>
@@ -102,6 +102,7 @@ const organisms: [string, string][] = [["", "any organism"], ["Homo sapiens", "h
   </style>
 
   <script>
+    import { markDone } from "../../scripts/flow";
     type Run = { srp?: string; prj?: string; run: string; sample: string; alias: string; title: string; layout: string; strategy: string; instrument: string; reads: number; bases: number; fastq: string[]; bytes: number[]; md5: string[]; organism: string; on: boolean; name: string; condition: string; batch: string; tech: boolean };
     const $ = <T extends Element>(s: string) => document.querySelector<T>(s)!;
     const form = $<HTMLFormElement>("[data-form]"), status = $<HTMLElement>("[data-status]"), result = $<HTMLElement>("[data-result]");
@@ -176,6 +177,10 @@ const organisms: [string, string][] = [["", "any organism"], ["Homo sapiens", "h
         study = { acc, title: bp.title, srp: (runs[0] as any).srp || geo?.srp || (/^[SED]RP/.test(acc) ? acc : ""), prj, geo: geo?.accession || (geo ? acc : ""), summary: bp.summary };
         guessConditions();
         render();
+        const rl = $<HTMLAnchorElement>("[data-run-link]");
+        rl.href = study.geo ? `../run/?gse=${study.geo}` : "../run/";
+        try { if (runs[0]?.organism) sessionStorage.setItem("rr-organism", runs[0].organism); } catch {}
+        markDone(1, rl);
         const off = runs.filter((r) => !r.on).length;
         say(`${runs.length} runs from NCBI SRA${geo ? `, via GEO → ${prj}` : ""}.${off ? ` ${off} non-RNA-seq runs (${[...new Set(runs.filter((r) => !r.on).map((r) => r.strategy))].join(", ")}) are unticked.` : ""}`);
       } catch (e) { say((e as Error).message, true); }
@@ -303,8 +308,9 @@ const organisms: [string, string][] = [["", "any organism"], ["Homo sapiens", "h
           <div>${r.counts ? `<span class="badge ok">NCBI count matrix</span>` : ""}${r.sra ? `<span class="badge ok">raw reads (SRA)</span>` : `<span class="badge">no SRA link</span>`}${r.sc ? `<span class="badge sc">single-cell?</span>` : ""}</div>
           <p class="sum">${esc(r.summary.slice(0, 320))}${r.summary.length > 320 ? "…" : ""}</p>
           ${r.samples.length ? `<p class="samples">Samples: ${esc(r.samples.slice(0, 6).join(" · "))}${r.samples.length > 6 ? ` · +${r.samples.length - 6} more` : ""}</p>` : ""}
-          <div class="acts"><button type="button" class="btn btn-primary" data-use="${r.acc}">Use this dataset →</button>${r.counts ? `<a class="btn btn-ghost" href="https://www.ncbi.nlm.nih.gov/geo/download/?type=rnaseq_counts&acc=${r.acc}" target="_blank" rel="noopener">NCBI counts ↗</a>` : ""}</div>
+          <div class="acts"><button type="button" class="btn btn-ghost" data-use="${r.acc}">Runs and sample sheet</button><a class="btn btn-primary" href="../run/?gse=${r.acc}" data-runnow="${r.acc}">Run DESeq2 on it →</a>${r.counts ? `<a class="btn btn-ghost" href="https://www.ncbi.nlm.nih.gov/geo/download/?type=rnaseq_counts&acc=${r.acc}" target="_blank" rel="noopener">NCBI counts ↗</a>` : ""}</div>
         </div>`).join("");
+        fres.querySelectorAll<HTMLAnchorElement>("[data-runnow]").forEach((a) => a.addEventListener("click", () => { try { sessionStorage.removeItem("rr-samples"); const r = rows.find((x) => x.acc === a.dataset.runnow); if (r?.taxon) sessionStorage.setItem("rr-organism", r.taxon.split(";")[0].trim()); } catch {} markDone(1); }));
         fres.querySelectorAll<HTMLButtonElement>("[data-use]").forEach((b) => b.addEventListener("click", () => { (form.elements.namedItem("acc") as HTMLInputElement).value = b.dataset.use!; lookup(b.dataset.use!); setTimeout(() => $<HTMLElement>("[data-form]").scrollIntoView({ behavior: "smooth", block: "start" }), 100); }));
         const hidden = rows.length - shown.length;
         fsay(`${count.toLocaleString("en-US")} datasets match; showing ${start + 1}–${start + rows.length}${hidden ? ` (${hidden} on this page hidden by the sample/single-cell filters)` : ""}.`);

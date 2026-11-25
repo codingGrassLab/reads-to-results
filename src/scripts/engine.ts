@@ -45,7 +45,55 @@ export interface RunConfig { countsCSV: string; samplesCSV: string; sampleCol: s
 export interface RunResult { resultsCSV: string; log: string; nGenes: number; nAfterFilter: number; nTested: number; nUp: number; nDown: number; sizeFactors: Record<string, number>; versions: { deseq2: string; r: string; apeglm: string } }
 
 const rstr = (s: string) => `"${s.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
-const rsym = (s: string) => `\`${s.replace(/`/g, "")}\``;
+
+/** The R code that runs (reads /counts.csv and /samples.csv, writes /results.csv). */
+export function deseq2Code(c: Omit<RunConfig, "countsCSV" | "samplesCSV">): string {
+  const design = c.batchCol ? `~ ${c.batchCol} + ${c.conditionCol}` : `~ ${c.conditionCol}`;
+  const code = `
+    log <- character(0); note <- function(...) log <<- c(log, paste0(...))
+    raw <- read.csv("/counts.csv", check.names = FALSE, stringsAsFactors = FALSE, colClasses = "character")
+    ids <- trimws(raw[[1]]); raw <- raw[-1]
+    samples <- read.csv("/samples.csv", stringsAsFactors = FALSE, check.names = FALSE, colClasses = "character")
+    samples <- samples[!is.na(samples[[${rstr(c.sampleCol)}]]) & samples[[${rstr(c.sampleCol)}]] != "", , drop = FALSE]
+    cv <- samples[[${rstr(c.conditionCol)}]]
+    drop <- is.na(cv) | trimws(cv) == ""
+    if (any(drop)) { note("Left out ", sum(drop), " samples with no ${c.conditionCol.replace(/[`"\$]/g, "")} value"); samples <- samples[!drop, , drop = FALSE]; cv <- cv[!drop] }
+    if (!all(c(${rstr(c.refLevel)}, ${rstr(c.trtLevel)}) %in% cv)) stop("Condition levels found: ", paste(unique(cv), collapse = ", "), ". Expected ${c.refLevel.replace(/[`"\$]/g, "")} and ${c.trtLevel.replace(/[`"\$]/g, "")}.")
+    # internal, syntactic names: the condition and batch columns become condition / batch and their levels make.names() tokens
+    lv <- unique(cv); safe <- make.names(lv, unique = TRUE); names(safe) <- lv
+    ref <- safe[[${rstr(c.refLevel)}]]; trt <- safe[[${rstr(c.trtLevel)}]]
+    cd <- data.frame(condition = relevel(factor(unname(safe[cv])), ref = ref), row.names = samples[[${rstr(c.sampleCol)}]])
+    ${c.batchCol ? `bv <- samples[[${rstr(c.batchCol)}]]; bv[is.na(bv) | bv == ""] <- "none"; cd$batch <- factor(make.names(bv))` : ""}
+    missing <- setdiff(rownames(cd), colnames(raw))
+    if (length(missing)) stop("Samples in the sheet but not in the count matrix: ", paste(missing, collapse = ", "))
+    extra <- setdiff(colnames(raw), rownames(cd))
+    if (length(extra)) note("Columns of the matrix not used: ", paste(head(extra, 8), collapse = ", "), if (length(extra) > 8) ", …" else "")
+    counts <- vapply(rownames(cd), function(s) suppressWarnings(as.numeric(gsub(",", ".", raw[[s]]))), numeric(length(ids)))
+    if (is.null(dim(counts))) counts <- matrix(counts, ncol = nrow(cd), dimnames = list(NULL, rownames(cd)))
+    ok <- !is.na(ids) & ids != ""
+    counts <- counts[ok, , drop = FALSE]; ids <- ids[ok]
+    if (any(is.na(counts))) { note(sum(is.na(counts)), " empty or non-numeric count cells set to 0"); counts[is.na(counts)] <- 0 }
+    if (any(counts < 0)) stop("The matrix has negative values: these are not raw counts (log-transformed or normalized data cannot go into DESeq2).")
+    if (any(counts %% 1 != 0)) { fr <- mean(counts %% 1 != 0); if (fr > 0.5 && max(counts) < 50) stop("Most values are small decimals: this looks like normalized or log-scale data (TPM, FPKM, log2CPM), not raw counts."); note("Non-integer values (", signif(100 * fr, 2), "% of cells, e.g. Salmon estimated counts) rounded to integers."); counts <- round(counts) }
+    if (anyDuplicated(ids)) { note(sum(duplicated(ids)), " duplicated gene IDs: their counts were summed"); counts <- rowsum(counts, ids, reorder = FALSE) } else rownames(counts) <- ids
+    storage.mode(counts) <- "integer"
+    note("Loaded ", nrow(counts), " genes x ", ncol(counts), " samples; design ", ${rstr(design)}, "; ", ${rstr(c.trtLevel)}, " (n = ", sum(cv == ${rstr(c.trtLevel)}), ") vs ", ${rstr(c.refLevel)}, " (n = ", sum(cv == ${rstr(c.refLevel)}), ")")
+    dds <- DESeqDataSetFromMatrix(countData = counts, colData = cd, design = ${c.batchCol ? "~ batch + condition" : "~ condition"})
+    keep <- rowSums(counts(dds) >= ${c.minCounts}) >= ${c.minSamples}
+    nAfter <- sum(keep); dds <- dds[keep, ]
+    note("Kept ", nAfter, " genes with >= ${c.minCounts} counts in >= ${c.minSamples} samples")
+    dds <- DESeq(dds, parallel = FALSE, quiet = TRUE)
+    res <- results(dds, contrast = c("condition", trt, ref), alpha = ${c.alpha}, parallel = FALSE)
+    shr <- NA_character_
+    ${c.shrink ? `if (requireNamespace("apeglm", quietly = TRUE)) { r2 <- lfcShrink(dds, coef = paste0("condition_", trt, "_vs_", ref), type = "apeglm", quiet = TRUE); res$shrunk_log2FoldChange <- r2$log2FoldChange; shr <- as.character(packageVersion("apeglm")) } else note("apeglm not available: no shrunken fold changes")` : ""}
+    df <- as.data.frame(res); df <- cbind(gene_id = rownames(df), df); df <- df[order(df$padj, df$pvalue), ]
+    write.csv(df, "/results.csv", row.names = FALSE)
+    sig <- !is.na(df$padj) & df$padj < ${c.alpha}
+    c(paste0("nGenes=", nrow(counts)), paste0("nAfter=", nAfter), paste0("nTested=", sum(!is.na(df$padj))), paste0("nUp=", sum(sig & df$log2FoldChange > 0)), paste0("nDown=", sum(sig & df$log2FoldChange < 0)),
+      paste0("sf=", paste(colnames(dds), signif(sizeFactors(dds), 5), sep = ":", collapse = ";")), paste0("shr=", shr), paste0("log=", paste(log, collapse = " | ")))
+  `;
+  return code;
+}
 
 /** Run DESeq2 on a count matrix and sample sheet (both as CSV text). */
 export async function runDESeq2(c: RunConfig, onProgress: Progress): Promise<RunResult> {
@@ -53,37 +101,7 @@ export async function runDESeq2(c: RunConfig, onProgress: Progress): Promise<Run
   const enc = new TextEncoder();
   await R.FS.writeFile("/counts.csv", enc.encode(c.countsCSV));
   await R.FS.writeFile("/samples.csv", enc.encode(c.samplesCSV));
-  const cond = rsym(c.conditionCol), batch = c.batchCol ? rsym(c.batchCol) : "";
-  const design = batch ? `~ ${batch} + ${cond}` : `~ ${cond}`;
-  const code = `
-    log <- character(0); note <- function(...) log <<- c(log, paste0(...))
-    counts <- as.matrix(read.csv("/counts.csv", row.names = 1, check.names = FALSE))
-    samples <- read.csv("/samples.csv", stringsAsFactors = FALSE, check.names = FALSE)
-    samples$${cond} <- factor(samples$${cond})
-    if (!all(c(${rstr(c.refLevel)}, ${rstr(c.trtLevel)}) %in% levels(samples$${cond}))) stop("Condition levels found: ", paste(levels(samples$${cond}), collapse = ", "), ". Expected ${c.refLevel} and ${c.trtLevel}.")
-    samples$${cond} <- relevel(samples$${cond}, ref = ${rstr(c.refLevel)})
-    ${batch ? `samples$${batch} <- factor(samples$${batch})` : ""}
-    rownames(samples) <- samples$${rsym(c.sampleCol)}
-    missing <- setdiff(rownames(samples), colnames(counts))
-    if (length(missing)) stop("Samples in the sheet but not in the count matrix: ", paste(missing, collapse = ", "))
-    counts <- counts[, rownames(samples), drop = FALSE]
-    if (any(counts %% 1 != 0, na.rm = TRUE)) { note("Non-integer values found: rounded to integers (DESeq2 needs raw counts)."); counts <- round(counts) }
-    counts[is.na(counts)] <- 0
-    note("Loaded ", nrow(counts), " genes x ", ncol(counts), " samples; design ", ${rstr(design)})
-    dds <- DESeqDataSetFromMatrix(countData = counts, colData = samples, design = ${design})
-    keep <- rowSums(counts(dds) >= ${c.minCounts}) >= ${c.minSamples}
-    nAfter <- sum(keep); dds <- dds[keep, ]
-    note("Kept ", nAfter, " genes with >= ${c.minCounts} counts in >= ${c.minSamples} samples")
-    dds <- DESeq(dds, parallel = FALSE, quiet = TRUE)
-    res <- results(dds, contrast = c(${rstr(c.conditionCol)}, ${rstr(c.trtLevel)}, ${rstr(c.refLevel)}), alpha = ${c.alpha}, parallel = FALSE)
-    shr <- NA_character_
-    ${c.shrink ? `if (requireNamespace("apeglm", quietly = TRUE)) { r2 <- lfcShrink(dds, coef = ${rstr(`${c.conditionCol}_${c.trtLevel}_vs_${c.refLevel}`)}, type = "apeglm", quiet = TRUE); res$shrunk_log2FoldChange <- r2$log2FoldChange; shr <- as.character(packageVersion("apeglm")) } else note("apeglm not available: no shrunken fold changes")` : ""}
-    df <- as.data.frame(res); df <- cbind(gene_id = rownames(df), df); df <- df[order(df$padj, df$pvalue), ]
-    write.csv(df, "/results.csv", row.names = FALSE)
-    sig <- !is.na(df$padj) & df$padj < ${c.alpha}
-    c(paste0("nGenes=", nrow(counts)), paste0("nAfter=", nAfter), paste0("nTested=", sum(!is.na(df$padj))), paste0("nUp=", sum(sig & df$log2FoldChange > 0)), paste0("nDown=", sum(sig & df$log2FoldChange < 0)),
-      paste0("sf=", paste(colnames(dds), signif(sizeFactors(dds), 5), sep = ":", collapse = ";")), paste0("shr=", shr), paste0("log=", paste(log, collapse = " | ")))
-  `;
+  const code = deseq2Code(c);
   onProgress("running DESeq2…");
   const shelter = await new R.Shelter();
   try {

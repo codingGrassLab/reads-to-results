@@ -2,7 +2,11 @@
 
 Analysis tools for RNA-seq differential-expression results (publication-ready figures, tables and methods text, all in the browser), with a complete worked analysis of one real dataset behind them. Static site built with Astro; every number and plot comes from one R script.
 
-- **Run DESeq2 in your browser**: real DESeq2 via webR (R → WebAssembly; packages from the Bioconductor r-universe wasm builds, locfit namespace stub hosted in `public/wasm/`). Count matrix + sample sheet → results table, handed to the results tool.
+The tools form one workflow, shown as a step bar on each tool page; "Next" carries the output of one step into the next (sessionStorage, nothing uploaded):
+
+1. **Find a dataset**: GEO search and accession lookup (NCBI E-utilities), runs and sample sheet, FASTQ download and Salmon scripts.
+2. **Run DESeq2 in your browser**: real DESeq2 via webR (R → WebAssembly; packages from the Bioconductor r-universe wasm builds, locfit namespace stub hosted in `public/wasm/`). Start from a GSE: the submitter's count file and the SOFT sample metadata are read from NCBI's FTP mirror and the matrix columns matched to GEO samples (`src/scripts/geo.ts`). Validated against desktop R on airway and GSE60450 (data page).
+3. **Explore your results** (below), 4. **Enrichment** (g:Profiler), 5. **Hub genes** (STRING export → cytoHubba scores).
 - **Explore your results**: upload a DESeq2/edgeR/limma table → thresholds → significant genes (CSV/XLSX), volcano and MA plots (SVG, 300-dpi PNG at journal widths), figure legends.
 - **Methods writer**: tools, versions and settings → methods paragraph with verified citations and BibTeX.
 - **Course** (11 lessons): raw reads → QC → trimming → how Salmon works → salmon quant → tximport → DESeq2 → plots → enrichment → your own project.

@@ -1,0 +1,52 @@
+---
+// The five analysis steps in order, shown on top of each tool page. A step is ticked when its page
+// has produced its output in this browser tab (sessionStorage); "Next" carries the output forward.
+import { path, type Lang } from "../i18n/ui";
+interface Props { lang: Lang; step: number }
+const { lang, step } = Astro.props;
+const steps = [
+  { key: "dataset", label: "Find a dataset", hint: "GEO search, sample sheet" },
+  { key: "run", label: "Run DESeq2", hint: "in your browser" },
+  { key: "results", label: "Results", hint: "volcano, MA, tables" },
+  { key: "enrich", label: "Enrichment", hint: "GO, KEGG, Reactome" },
+  { key: "hub", label: "Hub genes", hint: "network, cytoHubba scores" },
+];
+const next = steps[step];
+---
+<nav class="wf" aria-label="Analysis steps" data-wf={step}>
+  <ol>
+    {steps.map((s, i) => (
+      <li class:list={[{ cur: i + 1 === step }]} data-wf-step={i + 1}>
+        <a href={path(lang, s.key)} aria-current={i + 1 === step ? "step" : undefined}>
+          <span class="n" aria-hidden="true">{i + 1}</span><span class="t"><b>{s.label}</b><small>{s.hint}</small></span>
+        </a>
+      </li>
+    ))}
+  </ol>
+  {next && <a class="btn btn-ghost wf-next" href={path(lang, next.key)} data-wf-next>Next: {next.label} →</a>}
+</nav>
+
+<style>
+  .wf { display: flex; gap: 1rem; align-items: center; justify-content: space-between; flex-wrap: wrap; margin: 1.2rem 0 0; padding: 0.55rem 0.7rem; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); }
+  .wf ol { display: flex; gap: 0.25rem; list-style: none; margin: 0; padding: 0; flex-wrap: wrap; counter-reset: none; }
+  .wf li { margin: 0; position: relative; }
+  .wf li + li::before { content: ""; position: absolute; left: -0.25rem; top: 50%; width: 0.25rem; border-top: 1px solid var(--line-strong); }
+  .wf a { display: flex; gap: 0.5rem; align-items: center; padding: 0.35rem 0.7rem 0.35rem 0.4rem; border-radius: 999px; text-decoration: none; color: var(--muted); }
+  .wf a:hover { background: var(--bg-2); color: var(--ink); }
+  .wf .n { flex: none; width: 1.6rem; height: 1.6rem; border-radius: 50%; display: grid; place-items: center; font-size: 0.8rem; font-weight: 700; border: 1.5px solid var(--line-strong); background: var(--bg); color: var(--muted); }
+  .wf .t { display: flex; flex-direction: column; line-height: 1.15; }
+  .wf .t b { font-size: 0.86rem; font-weight: 600; }
+  .wf .t small { font-size: 0.7rem; color: var(--dim); }
+  .wf li.cur a { background: var(--accent-soft); color: var(--ink); }
+  .wf li.cur .n { border-color: var(--accent); color: var(--accent); }
+  .wf li.done .n { background: var(--accent); border-color: var(--accent); color: #fff; font-size: 0; }
+  .wf li.done .n::after { content: "✓"; font-size: 0.85rem; }
+  .wf-next { white-space: nowrap; }
+  .wf-next.ready { background: var(--accent); border-color: var(--accent); color: #fff; }
+  @media (max-width: 760px) { .wf .t small { display: none; } .wf a { padding-right: 0.5rem; } }
+</style>
+
+<script>
+  import { initFlow } from "../scripts/flow";
+  initFlow();
+</script>

@@ -49,6 +49,7 @@ const defaultSources = ["GO:BP", "KEGG", "REAC"];
       </form>
 
       <div class="en-out" data-out hidden>
+        <div class="en-next"><span><b>Next step:</b> rank the hub genes of these DEGs in their protein interaction network.</span><a class="btn btn-primary" data-hub href="../hub/">Hub genes of these DEGs →</a></div>
         <div data-lists></div>
         <div class="note small" style="margin-top:2rem"><strong>Reading it honestly.</strong> Enrichment depends on the gene list cutoff, the background and the annotation version; terms with huge sizes (thousands of genes) are rarely informative, and sibling GO terms repeat the same genes. Report the terms as suggestions, show the genes behind them, and state the database version (<span data-version></span>).</div>
       </div>
@@ -79,6 +80,7 @@ const defaultSources = ["GO:BP", "KEGG", "REAC"];
     .en-table td { font-size: 0.84rem; }
     .en-table td.genes { font-size: 0.75rem; color: var(--muted); max-width: 32ch; white-space: normal; }
     .en-table .src { font-size: 0.72rem; color: var(--dim); }
+    .en-next { display: flex; gap: 1rem; align-items: center; justify-content: space-between; flex-wrap: wrap; padding: 0.7rem 1rem; margin-bottom: 1.5rem; border: 1px solid var(--accent); border-radius: var(--radius-sm); background: var(--accent-soft); font-size: 0.9rem; }
     .caption { font-size: 0.85rem; color: var(--muted); user-select: all; margin: 0.6rem 0 0; }
     .btn.flash { background: var(--accent); color: #fff; }
     /* the map panel is created at runtime, so its rules are global */
@@ -93,6 +95,7 @@ const defaultSources = ["GO:BP", "KEGG", "REAC"];
   <script>
     import { gprofiler, termsCSV, dotPlotSVG, enrichCaption, sourceNames, toEntrez, keggMapURL, type Term, type EnrichOpts, type DotOpts } from "../../scripts/enrich";
     import { svgToPng, download } from "../../scripts/deg";
+    import { markDone, resetFrom, setHandoff } from "../../scripts/flow";
     const $ = <T extends Element>(s: string) => document.querySelector<T>(s)!;
     const form = $<HTMLFormElement>("[data-form]"), status = $<HTMLElement>("[data-status]"), out = $<HTMLElement>("[data-out]"), lists = $<HTMLElement>("[data-lists]");
     const el = (n: string) => form.elements.namedItem(n) as HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement;
@@ -101,8 +104,14 @@ const defaultSources = ["GO:BP", "KEGG", "REAC"];
     const say = (m: string, err = false) => { status.textContent = m; status.classList.toggle("err", err); };
     let last: { terms: Term[]; version: string; queries: Record<string, string[]>; eo: EnrichOpts; failed: Record<string, string[]>; mapped: Record<string, number> } | null = null;
 
+    // hand-on to the hub-gene tool: the DE genes (up + down) and the organism
+    const hubLink = $<HTMLAnchorElement>("[data-hub]");
+    hubLink.addEventListener("click", () => {
+      const up = parseList(val("up")), down = parseList(val("down"));
+      try { sessionStorage.setItem("rr-hub", JSON.stringify({ up, down, organism: val("organism"), source: $("[data-handoff]").textContent ? "results" : "pasted lists" })); } catch {}
+    });
     // hand-off from the results tool
-    try { const h = sessionStorage.getItem("rr-enrich"); if (h) { const p = JSON.parse(h); el("up").value = p.up.join("\n"); el("down").value = p.down.join("\n"); el("background").value = p.background.join("\n"); $("[data-handoff]").textContent = `Loaded from ${p.source}: ${p.up.length} up, ${p.down.length} down, ${p.background.length} background genes (adjusted p < ${p.thresholds.padj}${p.thresholds.lfc ? `, |log2FC| ≥ ${p.thresholds.lfc}` : ""}).`; } } catch {}
+    try { const h = sessionStorage.getItem("rr-enrich"); if (h) { const p = JSON.parse(h); el("up").value = p.up.join("\n"); el("down").value = p.down.join("\n"); el("background").value = p.background.join("\n"); if (p.organism && [...(el("organism") as HTMLSelectElement).options].some((o) => o.value === p.organism)) el("organism").value = p.organism; setHandoff(hubLink); $("[data-handoff]").textContent = `Loaded from ${p.source}${p.organism ? ` (${p.organism})` : ""}: ${p.up.length} up, ${p.down.length} down, ${p.background.length} background genes (adjusted p < ${p.thresholds.padj}${p.thresholds.lfc ? `, |log2FC| ≥ ${p.thresholds.lfc}` : ""}).`; } } catch {}
     $("[data-example]").addEventListener("click", async () => {
       say("Loading the airway results…");
       const txt = await fetch("/data/airway_deseq2_results.csv").then((r) => r.text());
@@ -130,6 +139,7 @@ const defaultSources = ["GO:BP", "KEGG", "REAC"];
       if (!Object.keys(queries).length) { say("Paste at least one gene list.", true); return; }
       const eo = opts();
       if (!eo.sources.length) { say("Tick at least one data source.", true); return; }
+      resetFrom(4);
       const btn = $<HTMLButtonElement>("[data-run]"); btn.disabled = true; say("Sending the lists to g:Profiler… (5–20 seconds)");
       try {
         const r = await gprofiler(queries, eo);
@@ -138,6 +148,7 @@ const defaultSources = ["GO:BP", "KEGG", "REAC"];
         sel.innerHTML = `<option value="">all sources</option>` + eo.sources.map((src) => `<option value="${src}">${sourceNames[src] ?? src} only</option>`).join("");
         if ([...sel.options].some((o) => o.value === had)) sel.value = had;
         render();
+        markDone(4, hubLink);
         const fails = Object.entries(r.failed).filter(([, f]) => f.length).map(([q, f]) => `${f.length} of the ${q} IDs not recognised`).join("; ");
         say(`${r.terms.length} significant terms (g:Profiler data ${r.version}).${fails ? " " + fails + "." : ""}`);
       } catch (err) { say(`Could not run the enrichment: ${(err as Error).message}`, true); }

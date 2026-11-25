@@ -9,10 +9,27 @@ export const keggOrg: Record<string, string> = { hsapiens: "hsa", mmusculus: "mm
 
 /** Convert gene identifiers to Entrez Gene IDs with g:Convert (for KEGG pathway maps). */
 export async function toEntrez(organism: string, ids: string[]): Promise<string[]> {
-  const r = await fetch("https://biit.cs.ut.ee/gprofiler/api/convert/convert/", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ organism, query: ids, target: "ENTREZGENE_ACC" }) });
+  const r = await fetch("https://biit.cs.ut.ee/gprofiler/api/convert/convert/", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ organism, query: ids, target: "ENTREZGENE_ACC", numeric_ns: "ENTREZGENE_ACC" }) });
   if (!r.ok) throw new Error(`g:Convert returned ${r.status}`);
   const j = await r.json();
   return [...new Set((j.result ?? []).map((x: any) => x.converted).filter((v: string) => v && v !== "None" && /^\d+$/.test(v)))] as string[];
+}
+
+/** Gene symbols for any identifiers g:Profiler knows (g:Convert's "name" field). Only the IDs are sent. */
+export async function toSymbols(organism: string, ids: string[]): Promise<Record<string, string>> {
+  const r = await fetch("https://biit.cs.ut.ee/gprofiler/api/convert/convert/", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ organism, query: ids, target: "ENTREZGENE", numeric_ns: "ENTREZGENE_ACC" }) });
+  if (!r.ok) throw new Error(`g:Convert returned ${r.status}`);
+  const j = await r.json(), out: Record<string, string> = {};
+  for (const x of j.result ?? []) if (x.name && x.name !== "None" && !out[x.incoming]) out[x.incoming] = x.name;
+  return out;
+}
+/** g:Profiler organism id from a scientific name, or from Ensembl-style gene IDs. */
+export function organismFrom(sci: string, ids: string[] = []): string {
+  const [g, sp] = (sci || "").trim().toLowerCase().split(/\s+/);
+  if (g && sp) return g[0] + sp;
+  const pre: [RegExp, string][] = [[/^ENSG\d/, "hsapiens"], [/^ENSMUSG\d/, "mmusculus"], [/^ENSRNOG\d/, "rnorvegicus"], [/^ENSDARG\d/, "drerio"], [/^FBgn\d/, "dmelanogaster"], [/^WBGene\d/, "celegans"], [/^ENSGALG\d/, "ggallus"], [/^ENSSSCG\d/, "sscrofa"], [/^ENSBTAG\d/, "btaurus"], [/^AT[1-5CM]G\d/i, "athaliana"]];
+  for (const [re, o] of pre) if (ids.slice(0, 50).filter((i) => re.test(i)).length > 25) return o;
+  return "";
 }
 
 /** KEGG's own pathway map with the given Entrez genes highlighted (opens on kegg.jp; nothing is hosted here). */
@@ -25,7 +42,7 @@ export const sourceNames: Record<string, string> = { "GO:BP": "GO biological pro
 
 /** Run g:GOSt for one or more gene lists. Returns terms and the API's version string. */
 export async function gprofiler(queries: Record<string, string[]>, o: EnrichOpts): Promise<{ terms: Term[]; version: string; failed: Record<string, string[]>; mapped: Record<string, number> }> {
-  const body: Record<string, unknown> = { organism: o.organism, query: queries, sources: o.sources, user_threshold: o.threshold, significance_threshold_method: o.method, no_evidences: false, no_iea: o.noIEA, ordered: false };
+  const body: Record<string, unknown> = { organism: o.organism, query: queries, sources: o.sources, user_threshold: o.threshold, significance_threshold_method: o.method, no_evidences: false, no_iea: o.noIEA, ordered: false, numeric_ns: "ENTREZGENE_ACC" };
   if (o.background && o.background.length) { body.domain_scope = "custom_annotated"; body.background = o.background; }
   const r = await fetch("https://biit.cs.ut.ee/gprofiler/api/gost/profile/", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
   if (!r.ok) throw new Error(`g:Profiler returned ${r.status}`);

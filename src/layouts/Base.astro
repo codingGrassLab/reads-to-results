@@ -11,6 +11,7 @@ interface Props {
   noindex?: boolean;
 }
 const { lang, title, description, active, noindex = false } = Astro.props;
+const flowStep = ["dataset", "run", "results", "enrich", "hub"].indexOf(active ?? "") + 1;
 const siteName = t(lang, "site.name");
 const pageTitle = title ? `${title} | ${siteName}` : `${siteName} | ${t(lang, "site.tagline")}`;
 const desc = description ?? t(lang, "site.description");
@@ -38,6 +39,7 @@ const nav = [
 const shortLang: Record<Lang, string> = { en: "EN" };
 const multi = langs.length > 1;
 const year = new Date().getFullYear();
+import Workflow from "../components/Workflow.astro";
 ---
 <!doctype html>
 <html lang={lang}>
@@ -93,7 +95,7 @@ const year = new Date().getFullYear();
       </div>
     </header>
 
-    <main id="main"><slot /></main>
+    <main id="main">{flowStep > 0 && <div class="container"><Workflow lang={lang} step={flowStep} /></div>}<slot /></main>
 
     <footer class="site-footer">
       <div class="container">

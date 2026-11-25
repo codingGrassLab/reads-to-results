@@ -16,16 +16,17 @@ const description = "Real DESeq2 (R, compiled to WebAssembly) running inside thi
 
     <section class="rn">
       <div class="rn-side">
+        <div class="box rn-geobox">
+          <h3>Start from GEO</h3>
+          <p class="small muted">Enter a series. The submitter's count matrix and every sample's metadata (title, characteristics) are read from NCBI's FTP mirror into this page, and the matrix columns are matched to the GEO samples. Or skip this and use your own files below.</p>
+          <div class="rn-geoform"><input data-gse placeholder="GSE60450" spellcheck="false" /><button type="button" class="btn btn-primary" data-geo-go>Fetch</button></div>
+          <div class="small" data-geo-out></div>
+        </div>
         <div class="box">
           <h3>1 · Count matrix</h3>
           <p class="small muted">Raw integer counts, genes in rows, samples in columns, first column = gene ID (CSV/TSV, optionally .gz). From Salmon + tximport, featureCounts, or a GEO count file.</p>
           <div class="drop" data-drop="counts" tabindex="0"><input type="file" accept=".csv,.tsv,.txt,.gz" hidden data-file="counts" /><strong>Choose or drop the count matrix</strong></div>
           <p class="small" data-counts-info></p>
-          <details class="rn-geo"><summary class="small">…or fetch a count file from GEO</summary>
-            <p class="small muted">GEO series often carry the submitter's count matrix as a supplementary file. Enter the GSE, pick the file, and it is read straight from NCBI's FTP mirror into this page. (NCBI's own standardized count matrices cannot be fetched this way; download that file from the GEO page and drop it above.)</p>
-            <div class="rn-geoform"><input data-gse placeholder="GSE226151" /><button type="button" class="btn btn-ghost" data-geo-list>List files</button></div>
-            <div class="small" data-geo-files></div>
-          </details>
         </div>
         <div class="box">
           <h3>2 · Sample sheet</h3>
@@ -33,6 +34,7 @@ const description = "Real DESeq2 (R, compiled to WebAssembly) running inside thi
           <div class="drop" data-drop="samples" tabindex="0"><input type="file" accept=".csv,.tsv,.txt" hidden data-file="samples" /><strong>Choose or drop the sample sheet</strong></div>
           <p class="small" data-samples-info></p>
           <div data-sheet-handoff class="small muted"></div>
+          <div data-map class="rn-map" hidden></div>
         </div>
         <div class="box">
           <h3>3 · Design</h3>
@@ -87,16 +89,24 @@ const description = "Real DESeq2 (R, compiled to WebAssembly) running inside thi
     .rn-btns { display: flex; gap: 0.5rem; flex-wrap: wrap; margin: 0.5rem 0; }
     .rn-log { font-size: 0.78rem; line-height: 1.5; max-height: 320px; overflow: auto; white-space: pre-wrap; margin: 0.6rem 0 0; }
     .rn-log.err { color: var(--up); }
-    .rn-geo { margin-top: 0.6rem; } .rn-geo summary { cursor: pointer; color: var(--accent); }
+    .rn-geobox { border-color: var(--accent); }
+    :global(.rn-files) { margin: 0.5rem 0; display: grid; gap: 0.2rem; }
+    :global(.rn-files label) { display: flex !important; gap: 0.4rem; align-items: baseline; margin: 0 !important; color: var(--text) !important; font-size: 0.82rem !important; word-break: break-all; }
+    :global(.rn-files .bad) { color: var(--dim); }
+    :global(.rn-files em) { color: var(--warn); font-style: normal; font-size: 0.75rem; }
+    .rn-map { margin-top: 0.6rem; font-size: 0.82rem; }
+    :global(.rn-map table) { width: 100%; } :global(.rn-map td) { padding: 0.2rem 0.3rem; font-size: 0.8rem; word-break: break-all; }
+    :global(.rn-map select) { width: 100%; font-size: 0.8rem; }
     .rn-geoform { display: flex; gap: 0.4rem; margin: 0.4rem 0; } .rn-geoform input { flex: 1; padding: 0.35rem 0.5rem; font: inherit; font-size: 0.9rem; border: 1px solid var(--line-strong); border-radius: 6px; background: var(--bg); font-family: var(--f-mono); }
     .rn-geoform .btn { padding: 0.35rem 0.8rem; font-size: 0.85rem; }
-    [data-geo-files] a { display: block; margin: 0.25rem 0; }
     .btn.flash { background: var(--accent); color: #fff; }
   </style>
 
   <script>
     import { parseTable, detectDelimiter } from "../../scripts/deg";
     import { runDESeq2, loadEngine } from "../../scripts/engine";
+    import { markDone, resetFrom } from "../../scripts/flow";
+    import { geoDir, listCountFiles, fetchSamples, matchColumns, sampleSheet, fetchGeoText, type GeoSample, type CountFile } from "../../scripts/geo";
     const $ = <T extends Element>(s: string) => document.querySelector<T>(s)!;
     const log = $<HTMLElement>("[data-log]"), runBtn = $<HTMLButtonElement>("[data-run]");
     let countsText = "", countsName = "", samplesText = "", samplesName = "", sheet: { columns: string[]; data: string[][] } | null = null, matrixCols: string[] = [];
@@ -116,7 +126,7 @@ const description = "Real DESeq2 (R, compiled to WebAssembly) running inside thi
       const d = detectDelimiter(text.slice(0, 20000));
       matrixCols = first.split(d).map((x) => x.trim().replace(/^"|"$/g, "")).slice(1);
       const nRows = text.split(/\r?\n/).filter((l) => l.trim()).length - 1;
-      $("[data-counts-info]").textContent = `${name}: ${nRows.toLocaleString("en-US")} genes × ${matrixCols.length} samples (${matrixCols.slice(0, 4).join(", ")}${matrixCols.length > 4 ? ", …" : ""})`;
+      $("[data-counts-info]").textContent = `${name}: ${nRows.toLocaleString("en-US")} genes × ${matrixCols.length} columns (${matrixCols.slice(0, 4).join(", ")}${matrixCols.length > 4 ? ", …" : ""})`;
       if (d !== ",") countsText = text.split(/\r?\n/).map((l) => l.split(d).map((x) => x.replace(/^"|"$/g, "")).map((x) => (/[",]/.test(x) ? `"${x.replace(/"/g, '""')}"` : x)).join(",")).join("\n");
       refresh();
     }
@@ -138,9 +148,16 @@ const description = "Real DESeq2 (R, compiled to WebAssembly) running inside thi
       let best = 0; cols.forEach((_, i) => { if (matchScore(i) > matchScore(best)) best = i; });
       sel("sampleCol").value = cols[best];
       const lowered = cols.map((c) => c.toLowerCase());
-      const condGuess = ["condition", "dex", "treatment", "group", "genotype"].map((n) => lowered.indexOf(n)).find((i) => i >= 0);
+      const nLevels = (i: number) => new Set(sheet!.data.map((r) => r[i]).filter(Boolean)).size;
+      const condGuess = ["condition", "dex", "treatment", "group", "genotype"].map((n) => lowered.indexOf(n)).find((i) => i >= 0 && nLevels(i) >= 2 && nLevels(i) <= 4);
       let ci = condGuess ?? -1;
-      if (ci < 0) cols.forEach((_, i) => { const k = new Set(sheet!.data.map((r) => r[i])).size; if (i !== best && k >= 2 && k <= 4 && ci < 0) ci = i; });
+      if (ci < 0) {
+        // otherwise a column with few levels, each with at least two samples; two levels first
+        const skip = new Set(["sample", "gsm", "title", "source", "run", "biosample", "layout"]);
+        const cand = cols.map((c, i) => { const v = sheet!.data.map((r) => r[i]); const lv = [...new Set(v)]; return { i, k: lv.length, min: Math.min(...lv.map((l) => v.filter((x) => x === l).length)) }; })
+          .filter((x) => x.i !== best && !skip.has(lowered[x.i]) && x.k >= 2 && x.k <= 4 && x.min >= 2).sort((a, b) => (a.k === 2 ? 0 : 1) - (b.k === 2 ? 0 : 1) || a.k - b.k);
+        if (cand.length) ci = cand[0].i;
+      }
       if (ci >= 0) sel("conditionCol").value = cols[ci];
       const batchGuess = ["batch", "cell", "donor", "patient", "subject", "individual", "replicate"].map((n) => lowered.indexOf(n)).find((i) => i >= 0);
       if (batchGuess !== undefined && cols[batchGuess] !== sel("conditionCol").value) sel("batchCol").value = cols[batchGuess];
@@ -182,7 +199,8 @@ const description = "Real DESeq2 (R, compiled to WebAssembly) running inside thi
     sel("conditionCol").addEventListener("change", fillLevels); sel("refLevel").addEventListener("change", refresh); sel("trtLevel").addEventListener("change", refresh);
 
     // sample sheet handed over from the dataset tool
-    try { const h = sessionStorage.getItem("rr-samples"); if (h) { const p = JSON.parse(h); setSamples(p.csv, p.name); $("[data-sheet-handoff]").textContent = `Sample sheet loaded from the dataset tool (${p.name}).`; } } catch {}
+    // (with ?gse= the sheet is built from GEO instead, and the dataset tool's conditions are merged in by GSM)
+    try { const h = sessionStorage.getItem("rr-samples"); if (h && !new URLSearchParams(location.search).get("gse")) { const p = JSON.parse(h); setSamples(p.csv, p.name); $("[data-sheet-handoff]").textContent = `Sample sheet loaded from the dataset tool (${p.name}).`; } } catch {}
 
     $("[data-example]").addEventListener("click", async () => {
       say("Loading the airway example…");
@@ -196,31 +214,82 @@ const description = "Real DESeq2 (R, compiled to WebAssembly) running inside thi
       say("Airway: 63,677 genes × 8 samples, design ~ cell + dex, dex trt vs untrt. Expected: 4,081 genes at padj < 0.05.");
     });
 
-    // GEO supplementary files, read from NCBI's FTP mirror (it allows cross-origin reads)
-    const geoDir = (gse: string) => `https://ftp.ncbi.nlm.nih.gov/geo/series/${gse.slice(0, -3)}nnn/${gse}/suppl/`;
-    $("[data-geo-list]").addEventListener("click", async () => {
-      const gse = $<HTMLInputElement>("[data-gse]").value.trim().toUpperCase(), box = $<HTMLElement>("[data-geo-files]");
-      if (!/^GSE\d+$/.test(gse)) { box.textContent = "Enter a GEO series accession like GSE226151."; return; }
-      box.textContent = "Listing…";
+    // ── Start from GEO: count file + SOFT metadata, columns matched to samples ──
+    let geo: { gse: string; samples: GeoSample[]; files: CountFile[]; map: Map<string, GeoSample> } | null = null;
+    const geoOut = $<HTMLElement>("[data-geo-out]");
+    const esc = (x: string) => String(x).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
+    function handoffExtra(): Record<string, Record<string, string>> {
+      // conditions typed in the dataset tool, by GSM
       try {
-        const html = await fetch(geoDir(gse)).then((r) => { if (!r.ok) throw new Error(`NCBI returned ${r.status}`); return r.text(); });
-        const files = [...html.matchAll(/href="([^"\/]+)"/g)].map((m) => m[1]).filter((f) => /\.(txt|csv|tsv|tab)(\.gz)?$/i.test(f));
-        if (!files.length) { box.textContent = "No text tables among the supplementary files (there may be Excel or archive files; see the GEO page)."; return; }
-        box.innerHTML = files.map((f) => `<a href="#" data-geo-file="${f}">${f}</a>`).join("");
-        box.querySelectorAll<HTMLAnchorElement>("[data-geo-file]").forEach((a) => a.addEventListener("click", async (e) => {
-          e.preventDefault(); const f = a.dataset.geoFile!; say(`Fetching ${f} from NCBI…`);
-          try { const b = await fetch(geoDir(gse) + f).then((r) => { if (!r.ok) throw new Error(`NCBI returned ${r.status}`); return r.blob(); }); const t = await readBlob(b); setCounts(t, f); say(`${f} loaded (${(b.size / 1e6).toFixed(1)} MB). Check that the first column is the gene ID and the other columns are raw counts.`); }
-          catch (err: any) { say(`Could not fetch ${f}: ${err.message}`, true); }
-        }));
-      } catch (err: any) { box.textContent = `Could not list ${gse}: ${err.message}`; }
-    });
-    try { const h = sessionStorage.getItem("rr-samples"); if (h) { const p = JSON.parse(h); const m = /GSE\d+/.exec(p.name); if (m) $<HTMLInputElement>("[data-gse]").value = m[0]; } } catch {}
+        const h = sessionStorage.getItem("rr-samples"); if (!h) return {};
+        const p = JSON.parse(h); if (geo && !p.name.startsWith(geo.gse)) return {};
+        const t = parseTable(p.csv), gi = t.columns.indexOf("gsm"), ci = t.columns.indexOf("condition"), bi = t.columns.indexOf("batch");
+        if (gi < 0 || ci < 0 || !t.data.some((r) => r[ci])) return {};
+        const out: Record<string, Record<string, string>> = { condition: {} }; if (bi >= 0 && t.data.some((r) => r[bi])) out.batch = {};
+        for (const r of t.data) { out.condition[r[gi]] = r[ci]; if (out.batch) out.batch[r[gi]] = r[bi]; }
+        return out;
+      } catch { return {}; }
+    }
+    function buildSheet() {
+      if (!geo) return;
+      const sh = sampleSheet(geo.map, handoffExtra());
+      setSamples(sh.csv, `${geo.gse}_samples.csv`);
+      sel("sampleCol").value = "sample"; refresh();
+      renderMap();
+    }
+    function renderMap() {
+      const box = $<HTMLElement>("[data-map]");
+      if (!geo) { box.hidden = true; return; }
+      const used = new Set([...geo.map.values()].map((s) => s.gsm));
+      const left = geo.samples.filter((s) => !used.has(s.gsm));
+      const cols = matrixCols.filter((c) => !geo!.map.has(c));
+      if (!left.length || !cols.length) { box.hidden = true; return; }
+      box.hidden = false;
+      box.innerHTML = `<p class="small"><b>${cols.length} matrix column${cols.length > 1 ? "s" : ""} not matched</b> to a GEO sample by name. Pick the sample for each, or leave it out:</p><table>${cols.map((c, i) => `<tr><td><code>${esc(c)}</code></td><td><select data-mapcol="${i}"><option value="">leave out</option>${left.map((s) => `<option value="${s.gsm}">${esc(s.gsm)} · ${esc(s.title)}</option>`).join("")}</select></td></tr>`).join("")}</table>`;
+      box.querySelectorAll<HTMLSelectElement>("[data-mapcol]").forEach((sl) => sl.addEventListener("change", () => { const s = geo!.samples.find((x) => x.gsm === sl.value); if (s) { geo!.map.set(cols[+sl.dataset.mapcol!], s); buildSheet(); } }));
+    }
+    async function loadGeoFile(name: string) {
+      if (!geo) return;
+      say(`Fetching ${name} from NCBI…`);
+      const t0 = performance.now();
+      const text = await fetchGeoText(`${geoDir(geo.gse)}suppl/${name}`);
+      setCounts(text, name);
+      geo.map = matchColumns(matrixCols, geo.samples);
+      say(`${name}: ${matrixCols.length} columns, ${geo.map.size} matched to the ${geo.samples.length} GEO samples (${((performance.now() - t0) / 1000).toFixed(1)} s).`);
+      const notMatched = matrixCols.filter((c) => !geo!.map.has(c));
+      if (notMatched.length) say(`Not matched by name: ${notMatched.slice(0, 6).join(", ")}${notMatched.length > 6 ? ", …" : ""}. Annotation columns such as Length are simply left out; real samples can be assigned in box 2.`);
+      if (!geo.map.size) { say("No column could be matched to a GEO sample. Make the sample sheet yourself (sample names = the matrix column headers) and drop it in box 2.", true); return; }
+      buildSheet();
+    }
+    async function fromGeo(gseRaw: string) {
+      const gse = gseRaw.trim().toUpperCase();
+      if (!/^GSE\d+$/.test(gse)) { geoOut.textContent = "Enter a GEO series accession like GSE60450."; return; }
+      $<HTMLInputElement>("[data-gse]").value = gse;
+      geoOut.textContent = `Reading ${gse} from NCBI…`;
+      try {
+        const [files, samples] = await Promise.all([listCountFiles(gse), fetchSamples(gse).catch(() => [] as GeoSample[])]);
+        geo = { gse, samples, files, map: new Map() };
+        const usable = files.filter((f) => f.score > -100);
+        const org = samples[0]?.organism ?? "";
+        try { if (org) sessionStorage.setItem("rr-organism", org); sessionStorage.setItem("rr-gse", gse); } catch {}
+        geoOut.innerHTML = `<p><b>${gse}</b>: ${samples.length} samples${org ? ` · <i>${esc(org)}</i>` : ""}. Supplementary files:</p><div class="rn-files">${files.map((f) => `<label class="${f.score > -100 ? "" : "bad"}"><input type="radio" name="geofile" value="${esc(f.name)}" ${f.score > -100 ? "" : "disabled"} ${f === usable[0] ? "checked" : ""}> <span>${esc(f.name)} ${f.note ? `<em>${esc(f.note)}</em>` : ""}</span></label>`).join("")}</div>${!usable.length ? `<p class="small">No text count table here. Use NCBI's own count matrix from the GEO page if it offers one, or the reads, and drop the matrix in box 1.</p>` : ""}`;
+        geoOut.querySelectorAll<HTMLInputElement>('input[name="geofile"]').forEach((r) => r.addEventListener("change", () => loadGeoFile(r.value).catch((e) => say(`Could not read ${r.value}: ${e.message}`, true))));
+        if (usable[0]) await loadGeoFile(usable[0].name);
+      } catch (e: any) { geoOut.textContent = `Could not read ${gse}: ${e.message}`; }
+    }
+    $("[data-geo-go]").addEventListener("click", () => fromGeo($<HTMLInputElement>("[data-gse]").value));
+    $<HTMLInputElement>("[data-gse]").addEventListener("keydown", (e) => { if (e.key === "Enter") fromGeo((e.target as HTMLInputElement).value); });
+    {
+      const q = new URLSearchParams(location.search).get("gse");
+      if (q) fromGeo(q);
+      else { try { const h = sessionStorage.getItem("rr-samples"); const g = h ? /GSE\d+/.exec(JSON.parse(h).name)?.[0] : null; if (g) $<HTMLInputElement>("[data-gse]").value = g; } catch {} }
+    }
 
     $("[data-load]").addEventListener("click", () => loadEngine((m, done) => say(m)).catch((e) => say(`Engine failed: ${e.message}`, true)));
 
     let last: any = null;
     runBtn.addEventListener("click", async () => {
-      runBtn.disabled = true; $<HTMLElement>("[data-out]").hidden = true;
+      runBtn.disabled = true; $<HTMLElement>("[data-out]").hidden = true; resetFrom(2);
       const cfg = { countsCSV: countsText, samplesCSV: samplesText, sampleCol: sel("sampleCol").value, conditionCol: sel("conditionCol").value, refLevel: sel("refLevel").value, trtLevel: sel("trtLevel").value, batchCol: sel("batchCol").value,
         minCounts: +$<HTMLInputElement>('[data-c="minCounts"]').value || 0, minSamples: +$<HTMLInputElement>('[data-c="minSamples"]').value || 1, alpha: +$<HTMLInputElement>('[data-c="alpha"]').value || 0.05, shrink: $<HTMLInputElement>('[data-c="shrink"]').checked };
       const t0 = performance.now();
@@ -232,7 +301,10 @@ const description = "Real DESeq2 (R, compiled to WebAssembly) running inside thi
         $("[data-versions]").textContent = `DESeq2 ${r.versions.deseq2}${r.versions.apeglm && r.versions.apeglm !== "NA" ? `, apeglm ${r.versions.apeglm}` : ""}, R ${r.versions.r} (webR). Size factors: ${Object.entries(r.sizeFactors).map(([k, v]) => `${k} ${v.toFixed(2)}`).join(", ")}.`;
         const rows = r.resultsCSV.trim().split("\n").slice(1, 11).map((l) => l.split(",").map((x) => x.replace(/^"|"$/g, "")));
         $("[data-top]").innerHTML = rows.map((c) => `<tr><td><code>${c[0]}</code></td><td class="num">${(+c[1]).toFixed(1)}</td><td class="num">${(+c[2]).toFixed(2)}</td><td class="num">${(+c[5]).toExponential(1)}</td><td class="num">${(+c[6]).toExponential(1)}</td></tr>`).join("");
-        try { sessionStorage.setItem("rr-results", JSON.stringify({ name: `deseq2_results_${cfg.trtLevel}_vs_${cfg.refLevel}.csv`, text: r.resultsCSV })); } catch {}
+        const stem = (x: string) => x.replace(/[^A-Za-z0-9.-]+/g, "_").replace(/^_|_$/g, "");
+        const gse = geo?.gse ? `${geo.gse}_` : "";
+        try { sessionStorage.setItem("rr-results", JSON.stringify({ name: `${gse}deseq2_${stem(cfg.trtLevel)}_vs_${stem(cfg.refLevel)}.csv`, text: r.resultsCSV, organism: sessionStorage.getItem("rr-organism") || "" })); } catch {}
+        markDone(2, $<HTMLAnchorElement>("[data-explore]"));
         $<HTMLElement>("[data-out]").hidden = false;
         (window as any).__run = r;
       } catch (e: any) { say(`DESeq2 stopped: ${e.message}`, true); }

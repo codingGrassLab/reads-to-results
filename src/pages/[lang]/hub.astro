@@ -18,6 +18,23 @@ const algoHelp: Record<string, string> = {
       <p class="small muted">Everything runs in your browser; the network file is not uploaded anywhere. Scores follow cytoHubba's definitions and were checked against networkx on random graphs (see the data page).</p>
     </div>
 
+    <section class="hb-degs" data-degs hidden>
+      <h2>Your DE genes → STRING → back here</h2>
+      <p class="small" data-degs-info></p>
+      <div class="hb-degrow">
+        <label>Send the top <input type="number" data-degs-n min="10" value="300" style="width:6rem;display:inline-block" /> genes by adjusted p</label>
+        <form method="post" action="https://string-db.org/cgi/network" target="_blank" data-string><input type="hidden" name="identifiers" /><input type="hidden" name="species" /><button type="submit" class="btn btn-primary">Open them in STRING ↗</button></form>
+        <button type="button" class="btn btn-ghost" data-degs-copy>Copy the list</button>
+        <button type="button" class="btn btn-ghost" data-degs-dl>genes.txt</button>
+      </div>
+      <ol class="small hb-steps">
+        <li>STRING opens in a new tab with these genes and the organism filled in (STRING may ask you to confirm the organism or ambiguous names; keep the first match).</li>
+        <li>Optional: <em>Settings</em> → minimum interaction score (0.4 medium is STRING's default; 0.7 high is common in papers) and hide disconnected nodes. Press <em>Update</em>.</li>
+        <li><em>Exports</em> → <em>as tabular text output</em> (the "short" TSV). Drop that file below.</li>
+      </ol>
+      <p class="small muted" data-degs-note></p>
+    </section>
+
     <section>
       <div class="drop" data-drop tabindex="0" role="button" aria-label="Choose or drop a network file">
         <input type="file" accept=".tsv,.txt,.csv,.sif" data-file hidden />
@@ -96,6 +113,13 @@ const algoHelp: Record<string, string> = {
     .hb-venn { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 0.5rem; max-width: 620px; }
     .hb-venn svg { width: 100%; height: auto; }
     .btn.flash { background: var(--accent); color: #fff; }
+    .hb-degs { border: 1px solid var(--accent); background: var(--accent-soft); border-radius: var(--radius); padding: 1rem 1.3rem 0.6rem; margin-bottom: 1.5rem; }
+    .hb-degs h2 { margin: 0 0 0.3rem; font-size: 1.25rem; }
+    .hb-degrow { display: flex; flex-wrap: wrap; gap: 0.6rem; align-items: center; margin: 0.6rem 0; }
+    .hb-degrow label { font-size: 0.88rem; color: var(--muted); }
+    .hb-degrow input { padding: 0.3rem 0.5rem; font: inherit; border: 1px solid var(--line-strong); border-radius: 6px; background: var(--bg); }
+    .hb-degrow form { margin: 0; }
+    .hb-steps { margin: 0.4rem 0 0.6rem 1.2rem; padding: 0; color: var(--text); } .hb-steps li { margin: 0.2rem 0; }
   </style>
 
   <script>
@@ -103,6 +127,8 @@ const algoHelp: Record<string, string> = {
     import { parseNetwork, buildGraph, scoreAll, rank, algorithms } from "../../scripts/hub.mjs";
     import { download, svgToPng } from "../../scripts/deg";
     import { vennSVG, upsetSVG, regions } from "../../scripts/venn";
+    import { toSymbols } from "../../scripts/enrich";
+    import { markDone, resetFrom } from "../../scripts/flow";
     const $ = <T extends Element>(s: string) => document.querySelector<T>(s)!;
     const algoHelp: Record<string, string> = JSON.parse(document.getElementById("algo-help")!.textContent!);
     const drop = $<HTMLElement>("[data-drop]"), fileIn = $<HTMLInputElement>("[data-file]"), status = $<HTMLElement>("[data-status]"), main = $<HTMLElement>("[data-main]");
@@ -110,9 +136,38 @@ const algoHelp: Record<string, string> = {
     let rawText = "", sourceName = "", net: any = null, g: any = null, scores: any = null, cy: any = null;
 
     async function loadText(text: string, name: string) {
-      rawText = text; sourceName = name;
-      try { rebuild(); main.hidden = false; } catch (e) { say((e as Error).message, true); }
+      rawText = text; sourceName = name; resetFrom(5);
+      try { rebuild(); main.hidden = false; markDone(5); } catch (e) { say((e as Error).message, true); }
     }
+
+    // ── DE genes handed over from the results / enrichment steps ──
+    const taxon: Record<string, number> = { hsapiens: 9606, mmusculus: 10090, rnorvegicus: 10116, drerio: 7955, dmelanogaster: 7227, celegans: 6239, scerevisiae: 4932, athaliana: 3702, ggallus: 9031, sscrofa: 9823, btaurus: 9913 };
+    (async () => {
+      let ids: string[] = [], syms: Record<string, string> = {}, organism = "", src = "";
+      try {
+        const d = sessionStorage.getItem("rr-degs"), h = sessionStorage.getItem("rr-hub");
+        const hub = h ? JSON.parse(h) : null, degs = d ? JSON.parse(d) : null;
+        if (degs?.degs?.length) { ids = degs.degs.map((x: any[]) => x[0]); degs.degs.forEach((x: any[]) => { if (x[1]) syms[x[0]] = x[1]; }); organism = degs.organism || ""; src = `${degs.source}, sorted by adjusted p`; }
+        if (hub) { organism = hub.organism || organism; if (!ids.length) { ids = [...hub.up, ...hub.down]; src = "the enrichment lists"; } }
+      } catch {}
+      if (!ids.length) return;
+      const box = $<HTMLElement>("[data-degs]"); box.hidden = false;
+      const nIn = $<HTMLInputElement>("[data-degs-n]"); nIn.value = String(Math.min(ids.length, 300)); nIn.max = String(ids.length);
+      $("[data-degs-info]").textContent = `${ids.length.toLocaleString("en-US")} differentially expressed genes from ${src}${organism ? ` · ${organism}` : ""}.`;
+      // STRING resolves symbols best: look them up for IDs that have none (the same IDs already went to g:Profiler in the enrichment step)
+      const need = ids.filter((i) => !syms[i]);
+      if (need.length && organism) {
+        $("[data-degs-note]").textContent = "Looking up gene symbols (g:Profiler)…";
+        try { const m = await toSymbols(organism, need); Object.assign(syms, m); const left = ids.filter((i) => !syms[i]).length; $("[data-degs-note]").textContent = `Genes are sent as symbols${Object.keys(m).length ? ` (${Object.keys(m).length.toLocaleString("en-US")} looked up with g:Profiler)` : ""}${left ? `; ${left.toLocaleString("en-US")} IDs without a known symbol are sent as IDs` : ""}.`; }
+        catch { $("[data-degs-note]").textContent = "Symbols could not be looked up; the IDs are sent as they are (STRING understands Ensembl and Entrez IDs too)."; }
+      }
+      const list = () => [...new Set(ids.slice(0, Math.max(1, +nIn.value || 300)).map((i) => syms[i] || i))];
+      const f = $<HTMLFormElement>("[data-string]");
+      f.addEventListener("submit", () => { (f.elements.namedItem("identifiers") as HTMLInputElement).value = list().join("\r"); (f.elements.namedItem("species") as HTMLInputElement).value = String(taxon[organism] ?? 9606); });
+      if (!taxon[organism]) $("[data-degs-note]").append(" Organism unknown: STRING will ask for it.");
+      $("[data-degs-copy]").addEventListener("click", async (e) => { try { await navigator.clipboard.writeText(list().join("\n")); flash(e.currentTarget as HTMLElement, "Copied"); } catch {} });
+      $("[data-degs-dl]").addEventListener("click", (e) => { download("genes.txt", list().join("\n") + "\n", "text/plain"); flash(e.currentTarget as HTMLElement, "Saved"); });
+    })();
     fileIn.addEventListener("change", () => { const f = fileIn.files?.[0]; if (f) f.text().then((t) => loadText(t, f.name)); });
     drop.addEventListener("click", () => fileIn.click());
     drop.addEventListener("dragover", (e) => { e.preventDefault(); drop.classList.add("over"); }); drop.addEventListener("dragleave", () => drop.classList.remove("over"));

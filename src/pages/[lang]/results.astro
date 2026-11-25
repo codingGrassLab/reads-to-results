@@ -4,7 +4,7 @@ import { langs, path, type Lang } from "../../i18n/ui";
 export const getStaticPaths = () => langs.map((lang) => ({ params: { lang } }));
 const lang = Astro.params.lang as Lang;
 const title = "Explore your results";
-const description = "Upload a DESeq2, edgeR or limma results table, set your thresholds, and download the significant genes and publication-ready volcano and MA plots. Nothing leaves your browser.";
+const description = "Upload a DESeq2, edgeR or limma results table, set your thresholds, and download the significant genes and publication-ready volcano and MA plots. The table stays in your browser (only an optional gene-symbol lookup sends the gene IDs to g:Profiler).";
 ---
 <Base lang={lang} title={title} description={description} active="results">
   <div class="container">
@@ -28,6 +28,7 @@ const description = "Upload a DESeq2, edgeR or limma results table, set your thr
         <div class="box">
           <h3>Columns</h3>
           <p class="small muted" data-format></p>
+          <div class="small rt-sym" data-sym hidden></div>
           <div class="map" data-map></div>
         </div>
         <div class="box">
@@ -119,24 +120,29 @@ const description = "Upload a DESeq2, edgeR or limma results table, set your thr
     .mw-text { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 1rem 1.2rem; font-size: 0.95rem; line-height: 1.7; }
     .mw-text p:last-child { margin-bottom: 0; }
     .mw-text h4 { margin: 0.8em 0 0.3em; font-family: var(--f-body); font-size: 0.8rem; letter-spacing: 0.06em; text-transform: uppercase; color: var(--dim); }
+    .rt-sym { margin: 0.4rem 0 0.8rem; display: flex; flex-wrap: wrap; gap: 0.4rem 0.6rem; align-items: center; }
+    .rt-sym label { display: inline-flex; gap: 0.3rem; align-items: center; }
+    .rt-sym .btn { padding: 0.3rem 0.8rem; font-size: 0.85rem; }
   </style>
 
   <script>
     import { parseTable, autoMap, toRows, classify, significantCSV, figureSVG, figureCaption, svgToPng, download, fmtNum, label, type Row, type Mapping, type Thresholds, type FigureOpts } from "../../scripts/deg";
     import { linear, canvas, canvasAxes, tooltip, fmt } from "../../scripts/plot";
     import { xlsx, zipFiles } from "../../scripts/xlsx";
+    import { toSymbols, organismFrom, organisms } from "../../scripts/enrich";
+    import { markDone, resetFrom } from "../../scripts/flow";
 
     const $ = <T extends Element>(s: string) => document.querySelector<T>(s)!;
     const drop = $<HTMLElement>("[data-drop]"), fileIn = $<HTMLInputElement>("[data-file]"), status = $<HTMLElement>("[data-status]");
     const main = $<HTMLElement>("[data-main]"), mapEl = $<HTMLElement>("[data-map]"), formatEl = $<HTMLElement>("[data-format]");
-    let columns: string[] = [], data: string[][] = [], mapping: Mapping | null = null, format = "", rows: Row[] = [], sourceName = "", sourceText = "";
+    let columns: string[] = [], data: string[][] = [], mapping: Mapping | null = null, format = "", rows: Row[] = [], sourceName = "", sourceText = "", organism = "";
 
     // ── loading ─────────────────────────────────────────────────────────
     const say = (msg: string, err = false) => { status.textContent = msg; status.classList.toggle("err", err); };
     async function loadText(text: string, name: string) {
       try {
         const t = parseTable(text);
-        columns = t.columns; data = t.data; sourceName = name; sourceText = text;
+        columns = t.columns; data = t.data; sourceName = name; sourceText = text; resetFrom(3); $<HTMLElement>("[data-sym]").hidden = true;
         const am = autoMap(columns);
         mapping = am?.mapping ?? { id: columns[0], symbol: "", mean: "", lfc: "", p: "", padj: "" };
         format = am?.format ?? "";
@@ -194,8 +200,9 @@ const description = "Upload a DESeq2, edgeR or limma results table, set your thr
       const haveSym = sample.some((r) => r.symbol);
       const human = sample.filter((r) => /^ENSG\d+/.test(r.id)).length > sample.length / 2;
       const mouse = sample.filter((r) => /^ENSMUSG\d+/.test(r.id)).length > sample.length / 2;
-      if (haveSym || (!human && !mouse)) return;
-      if (mouse) { say(`${status.textContent} Mouse IDs: symbols are not looked up yet; a mouse table is planned.`); return; }
+      if (haveSym) return;
+      if (!human && !sample.some((r) => /[A-Za-z]{2,}\d|^\d+$/.test(r.id))) return;   // IDs that already read as symbols
+      if (!human) { offerSymbols(); return; }
       try {
         symbolTable ??= await fetch("/data/symbols_human.json").then((r) => r.json());
         let n = 0;
@@ -203,6 +210,23 @@ const description = "Upload a DESeq2, edgeR or limma results table, set your thr
         say(`${status.textContent} Added gene symbols for ${n.toLocaleString("en-US")} Ensembl IDs (org.Hs.eg.db).`);
         redraw();
       } catch { /* leave IDs as labels */ }
+    }
+    // other organisms / Entrez IDs: symbols from g:Profiler, only when asked (the IDs leave the browser)
+    function offerSymbols() {
+      const box = $<HTMLElement>("[data-sym]");
+      const org = organism || organismFrom("", rows.map((r) => r.id));
+      box.hidden = false;
+      box.innerHTML = `Gene IDs without symbols. <label>Organism <select data-sym-org>${organisms.map(([v, n]) => `<option value="${v}" ${v === org ? "selected" : ""}>${n}</option>`).join("")}</select></label> <button type="button" class="btn btn-ghost" data-sym-go>Add gene symbols (g:Profiler)</button><span class="muted"> sends the gene IDs only</span>`;
+      box.querySelector("[data-sym-go]")!.addEventListener("click", async (e) => {
+        const b = e.currentTarget as HTMLButtonElement; b.disabled = true; b.textContent = "Looking up…";
+        try {
+          const o = box.querySelector<HTMLSelectElement>("[data-sym-org]")!.value; organism = o;
+          const m = await toSymbols(o, rows.map((r) => r.id.replace(/\.\d+$/, "")));
+          let n = 0; for (const r of rows) { const sy = m[r.id.replace(/\.\d+$/, "")]; if (sy) { r.symbol = sy; n++; } }
+          box.innerHTML = `Added symbols for ${n.toLocaleString("en-US")} of ${rows.length.toLocaleString("en-US")} genes (g:Profiler g:Convert, ${o}).`;
+          redraw();
+        } catch (err) { b.disabled = false; b.textContent = "Add gene symbols (g:Profiler)"; box.append(` Failed: ${(err as Error).message}`); }
+      });
     }
     function rebuild() {
       const r = toRows(columns, data, mapping!);
@@ -213,6 +237,7 @@ const description = "Upload a DESeq2, edgeR or limma results table, set your thr
       $("[data-mean-th]").textContent = mapping!.mean || "mean";
       if (r.nDropped) say(`${status.textContent} ${r.nDropped.toLocaleString("en-US")} rows without a fold change were skipped.`);
       redraw();
+      if (rows.length) markDone(3, $<HTMLAnchorElement>("[data-enrich]"));
     }
     const plots: Record<string, { c: HTMLCanvasElement; ctx: CanvasRenderingContext2D; tip: ReturnType<typeof tooltip>; pts: { r: Row; x: number; y: number; cls: string }[] }> = {};
     function redraw() {
@@ -308,12 +333,14 @@ const description = "Upload a DESeq2, edgeR or limma results table, set your thr
     $<HTMLAnchorElement>("[data-enrich]").addEventListener("click", () => {
       if (!rows.length) return;
       const t = thr(), id = (r: Row) => r.id.replace(/\..*$/, "");
-      const payload = { source: sourceName, thresholds: t, up: rows.filter((r) => classify(r, t) === "up").map(id), down: rows.filter((r) => classify(r, t) === "down").map(id), background: rows.filter((r) => Number.isFinite(r.padj)).map(id) };
+      const payload = { source: sourceName, organism: organism || organismFrom("", rows.map(id)), thresholds: t, up: rows.filter((r) => classify(r, t) === "up").map(id), down: rows.filter((r) => classify(r, t) === "down").map(id), background: rows.filter((r) => Number.isFinite(r.padj)).map(id) };
       try { sessionStorage.setItem("rr-enrich", JSON.stringify(payload)); } catch {}
+      const degs = rows.filter((r) => { const c = classify(r, t); return c === "up" || c === "down"; }).sort((a, b) => a.padj - b.padj).map((r) => [id(r), r.symbol || "", +r.lfc.toPrecision(4), r.padj]);
+      try { sessionStorage.setItem("rr-degs", JSON.stringify({ organism: payload.organism, source: sourceName, degs })); } catch {}
     });
     $("[data-copytext]").addEventListener("click", async (e) => { try { await navigator.clipboard.writeText($<HTMLElement>("[data-papertext]").innerText); flash(e.currentTarget as HTMLElement, "Copied"); } catch {} });
     // results handed over from the in-browser DESeq2 run (after everything above is initialised)
-    try { const h = sessionStorage.getItem("rr-results"); if (h) { const p = JSON.parse(h); sessionStorage.removeItem("rr-results"); loadText(p.text, p.name); } } catch {}
+    try { const h = sessionStorage.getItem("rr-results"); if (h) { const p = JSON.parse(h); organism = organismFrom(p.organism || ""); loadText(p.text, p.name); } } catch {}
     (window as any).__rt = { get rows() { return rows; }, figureSVG, figOpts, thr, loadText, xlsx, classify, zipFiles };
   </script>
 </Base>
