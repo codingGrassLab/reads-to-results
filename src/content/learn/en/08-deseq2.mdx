@@ -143,7 +143,7 @@ write.csv(res_df, "results/airway_deseq2_results.csv")
 saveRDS(dds, "results/dds.rds")
 ```
 
-The exact file produced by this code is on the [data page](../../data/).
+The exact file produced by this code: [airway_deseq2_results.csv](/data/airway_deseq2_results.csv).
 
 <div class="task">
 <strong>Exercise.</strong> Re-run <code>results()</code> with <code>alpha = 0.1</code>. How many genes are now significant at padj below 0.1? (Our run: {summary.sig_01.toLocaleString("en-US")}.) Then explain in one sentence why this number is larger than the count at 0.05 by more than you would expect from the threshold alone. Hint: independent filtering.

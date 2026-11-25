@@ -6,13 +6,11 @@ const lang = Astro.params.lang as Lang;
 const s = {
   en: {
     who: "Who made this",
-    whoText: "Reads to Results is written and maintained by Amarta Chowdhury, a biochemistry and molecular biology student at Shahjalal University of Science and Technology, Bangladesh, whose research work is RNA-seq analysis. Every analysis result on the site was produced by the R script on the data page.",
+    whoText: "Reads to Results is written and maintained by Amarta Chowdhury, a biochemistry and molecular biology student at Shahjalal University of Science and Technology, Bangladesh, whose research work is RNA-seq analysis. Every analysis result on the site was produced by one R script on the real data.",
     why: "Why it exists",
     whyText: "Most RNA-seq tutorials either show code without the output, or output without the code. Students then cannot tell whether their own result looks right. This site shows both, on one real dataset, so that a student anywhere can follow a complete analysis and check their understanding against real numbers.",
     what: "What it is not",
     whatText: "It does not run Salmon or DESeq2 for you: you run them on your own computer, following the lessons. It is also not a substitute for the documentation of DESeq2, Salmon or the other software it describes; those documents are linked from each lesson and should be read.",
-    cite: "Citing the dataset",
-    citeText: "Himes BE, Jiang X, Wagner P, et al. RNA-Seq transcriptome profiling identifies CRISPLD2 as a glucocorticoid responsive gene that modulates cytokine function in airway smooth muscle cells. PLoS ONE 2014; 9(6): e99625. Data: GEO GSE52778, Bioconductor package airway.",
     contact: "Corrections",
     contactText: "If a number, a sentence or a translation is wrong, please open an issue on the repository. Corrections are credited in the changelog.",
   },
@@ -24,7 +22,6 @@ const s = {
     <h2>{s.who}</h2><p>{s.whoText}</p>
     <h2>{s.why}</h2><p>{s.whyText}</p>
     <h2>{s.what}</h2><p>{s.whatText}</p>
-    <h2>{s.cite}</h2><p>{s.citeText}</p>
     <h2>{s.contact}</h2><p>{s.contactText}</p>
   </div>
 </Base>

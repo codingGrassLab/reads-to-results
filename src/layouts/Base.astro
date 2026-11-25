@@ -7,7 +7,7 @@ interface Props {
   lang: Lang;
   title?: string;
   description?: string;
-  active?: "home" | "learn" | "read" | "data" | "about";
+  active?: "home" | "learn" | "read" | "about";
   noindex?: boolean;
 }
 const { lang, title, description, active, noindex = false } = Astro.props;
@@ -26,7 +26,6 @@ const fontsHref =
 const nav = [
   { key: "learn", href: path(lang, "learn"), label: t(lang, "nav.learn") },
   { key: "read", href: path(lang, "read"), label: t(lang, "nav.read") },
-  { key: "data", href: path(lang, "data"), label: t(lang, "nav.data") },
   { key: "about", href: path(lang, "about"), label: t(lang, "nav.about") },
 ];
 const shortLang: Record<Lang, string> = { en: "EN" };
