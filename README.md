@@ -1,5 +1,7 @@
 # Reads to Results
 
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.24545248.svg)](https://doi.org/10.5281/zenodo.24545248)
+
 **Live site: https://codinggrasslab.github.io/reads-to-results/**
 
 A free course in bulk RNA-seq analysis. One real experiment (airway) is followed from raw reads to differentially expressed genes and pathways with Salmon and DESeq2, every command shown with its actual output. Static site built with Astro.
@@ -55,3 +57,7 @@ public/data               downloads, volcano.json, dispersion.json
 - Text and figures: [CC BY 4.0](LICENSE-text.md). Reuse freely with credit to Amarta Chowdhury.
 - Code: [MIT](LICENSE).
 - The `airway` data are not covered by these licences; they come from the Bioconductor package `airway` (Himes et al. 2014, LGPL).
+
+## Cite
+
+Chowdhury, A. (2026). *Reads to Results: a free course in bulk RNA-seq analysis on real data*. Zenodo. https://doi.org/10.5281/zenodo.24545248

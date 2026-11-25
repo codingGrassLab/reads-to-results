@@ -7,6 +7,7 @@ authors:
   - family-names: Chowdhury
     given-names: Amarta
     affiliation: "Shahjalal University of Science and Technology, Bangladesh"
+doi: "10.5281/zenodo.24545248"
 repository-code: "https://github.com/codingGrassLab/reads-to-results"
 url: "https://codinggrasslab.github.io/reads-to-results/"
 license: MIT
