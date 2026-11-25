@@ -8,8 +8,6 @@ A free course in bulk RNA-seq analysis. One real experiment (airway) is followed
 - **Reading results** (8 pages): PCA, volcano, MA plot, p-values, log2 fold change, normalization, dispersion, heatmaps, each with an interactive figure drawn from the real data.
 - **Data and methods**: inputs, versions, downloads, a check against the original paper, and a Colab notebook.
 
-(The analysis tools that were built for a while are kept on the `analysis-tools` branch.)
-
 Dataset: `airway` (Bioconductor), from Himes et al. 2014, PLoS ONE 9(6): e99625; GEO GSE52778.
 
 ## Run it
