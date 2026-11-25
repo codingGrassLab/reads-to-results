@@ -5,7 +5,7 @@ import { algorithms } from "../../scripts/hub.mjs";
 export const getStaticPaths = () => langs.map((lang) => ({ params: { lang } }));
 const lang = Astro.params.lang as Lang;
 const title = "Hub genes";
-const description = "Upload a protein–protein interaction network (for example STRING's TSV export of your DEGs), rank the nodes with the twelve cytoHubba scores, pick the top N, and get the hub table, the network figure and files that open in Cytoscape.";
+const description = "Build the protein–protein interaction network of your DE genes with STRING (or upload one), rank the nodes with the twelve cytoHubba scores, pick the top N, and get the hub table, the network figure and files that open in Cytoscape.";
 const algoHelp: Record<string, string> = {
   Degree: "number of neighbours", MCC: "maximal clique centrality: sum of (|C|−1)! over the maximal cliques containing the node; cytoHubba's best-performing score", DMNC: "density of the maximum neighbourhood component", MNC: "size of the largest connected component among the node's neighbours", EPC: "edge-percolated component: mean size of the node's component over 1,000 random removals of half the edges", BottleNeck: "how often the node is a bottleneck in shortest-path trees (subtree larger than n/4)", EcCentricity: "1 / the longest shortest path from the node", Closeness: "sum of 1 / distance to every other node", Radiality: "(diameter + 1 − mean distance) style reach", Betweenness: "number of shortest paths passing through the node", Stress: "number of shortest paths passing through the node, counting all paths", ClusteringCoefficient: "how connected the node's neighbours are to each other",
 };
@@ -15,24 +15,27 @@ const algoHelp: Record<string, string> = {
     <div class="page-head prose">
       <h1>{title}</h1>
       <p class="lead">{description}</p>
-      <p class="small muted">Everything runs in your browser; the network file is not uploaded anywhere. Scores follow cytoHubba's definitions and were checked against networkx on random graphs (see the data page).</p>
+      <p class="small muted">The scores are computed in your browser; an uploaded network file is not sent anywhere. Scores follow cytoHubba's definitions and were checked against networkx on random graphs (see the data page).</p>
     </div>
 
     <section class="hb-degs" data-degs hidden>
-      <h2>Your DE genes → STRING → back here</h2>
+      <h2>Your DE genes → STRING network → hub genes</h2>
       <p class="small" data-degs-info></p>
       <div class="hb-degrow">
-        <label>Send the top <input type="number" data-degs-n min="10" value="300" style="width:6rem;display:inline-block" /> genes by adjusted p</label>
-        <form method="post" action="https://string-db.org/cgi/network" target="_blank" data-string><input type="hidden" name="identifiers" /><input type="hidden" name="species" /><button type="submit" class="btn btn-primary">Open them in STRING ↗</button></form>
+        <label>Top <input type="number" data-degs-n min="10" value="300" style="width:5.5rem;display:inline-block" /> genes by adjusted p</label>
+        <label>Confidence <select data-conf><option value="400">medium, ≥ 0.4 (STRING default)</option><option value="700">high, ≥ 0.7</option><option value="900">highest, ≥ 0.9</option><option value="150">low, ≥ 0.15</option></select></label>
+        <label>Network <select data-ntype><option value="functional">full (functional + physical)</option><option value="physical">physical only</option></select></label>
+      </div>
+      <div class="hb-degrow">
+        <button type="button" class="btn btn-primary" data-build>Build the network with STRING</button>
+        <form method="post" action="https://string-db.org/cgi/network" target="_blank" data-string><input type="hidden" name="identifiers" /><input type="hidden" name="species" /><button type="submit" class="btn btn-ghost">Open them on string-db.org ↗</button></form>
         <button type="button" class="btn btn-ghost" data-degs-copy>Copy the list</button>
         <button type="button" class="btn btn-ghost" data-degs-dl>genes.txt</button>
+        <button type="button" class="btn btn-ghost" data-net-dl hidden>STRING network TSV</button>
       </div>
-      <ol class="small hb-steps">
-        <li>STRING opens in a new tab with these genes and the organism filled in (STRING may ask you to confirm the organism or ambiguous names; keep the first match).</li>
-        <li>Optional: <em>Settings</em> → minimum interaction score (0.4 medium is STRING's default; 0.7 high is common in papers) and hide disconnected nodes. Press <em>Update</em>.</li>
-        <li><em>Exports</em> → <em>as tabular text output</em> (the "short" TSV). Drop that file below.</li>
-      </ol>
+      <p class="small" data-build-status></p>
       <p class="small muted" data-degs-note></p>
+      <p class="small muted">The gene names and the organism are sent to the STRING API (string-db.org, data CC BY 4.0) when the network is built; nothing else. Cite STRING (Szklarczyk et al. 2023) with the version shown.</p>
     </section>
 
     <section>
@@ -53,6 +56,7 @@ const algoHelp: Record<string, string> = {
           <p class="small muted" data-algohelp></p>
           <label>Top N hub genes <input type="number" data-n value="10" min="1" max="100" /></label>
           <label class="chk"><input type="checkbox" data-labels checked /> show gene names</label>
+          <label>Node colour <select data-colour><option value="rank">rank (red = 1 → yellow = N)</option><option value="lfc">log2 fold change (up red, down blue)</option></select></label>
           <label>Layout <select data-layout><option value="cose">force-directed (cose)</option><option value="circle">circle</option><option value="concentric">concentric by rank</option><option value="grid">grid</option></select></label>
         </div>
         <div class="box">
@@ -69,7 +73,7 @@ const algoHelp: Record<string, string> = {
       </div>
       <div class="hb-body">
         <div class="stats" data-stats></div>
-        <div class="hb-fig"><div data-cy class="hb-cy"></div><div class="legend"><span><i style="background:#c0392b"></i>rank 1</span><span><i style="background:#f6d55c"></i>rank N</span><span class="muted">top N hub genes and the interactions between them; node size = chosen score</span></div></div>
+        <div class="hb-fig"><div data-cy class="hb-cy"></div><div class="legend" data-legend></div></div>
         <p class="caption" data-caption></p>
         <h2 style="margin-top:2rem">Top <span data-n-out>10</span> hub genes by <span data-algo-out>MCC</span></h2>
         <div class="table-wrap"><table class="hb-table"><thead><tr><th>Rank</th><th>Gene</th><th class="num" data-score-th>MCC</th><th>Ranks in the other scores</th></tr></thead><tbody data-table></tbody></table></div>
@@ -105,7 +109,7 @@ const algoHelp: Record<string, string> = {
     .hb-fig { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 0.4rem; }
     .hb-cy { width: 100%; height: 460px; }
     .legend { display: flex; flex-wrap: wrap; gap: 0.5rem 1.2rem; font-size: 0.85rem; color: var(--muted); padding: 0.4rem 0.6rem 0.2rem; }
-    .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 0.4rem; }
+    :global(.legend i) { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 0.4rem; }
     .caption { font-size: 0.88rem; color: var(--muted); user-select: all; }
     .hb-table td { font-size: 0.86rem; } .hb-table td.r { color: var(--dim); font-size: 0.76rem; }
     .hb-algos { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 0.2rem 0.8rem; font-size: 0.86rem; color: var(--muted); }
@@ -141,6 +145,29 @@ const algoHelp: Record<string, string> = {
     }
 
     // ── DE genes handed over from the results / enrichment steps ──
+    const lfcOf: Record<string, number> = {};
+    let netMeta: { version: string; conf: number; type: string; sent: number } | null = null, stringTSV: { name: string; text: string } | null = null;
+    const STRING = "https://string-db.org/api";
+    const pause = (ms: number) => new Promise((r) => setTimeout(r, ms));
+    async function stringPost(path: string, params: Record<string, string>) {
+      const r = await fetch(`${STRING}/${path}`, { method: "POST", body: new URLSearchParams({ ...params, caller_identity: "reads-to-results" }) });
+      if (!r.ok) throw new Error(`STRING returned ${r.status}`);
+      return r.text();
+    }
+    /** Map the genes to STRING proteins (best match each), then fetch the interactions among them. */
+    async function stringNetwork(genes: string[], species: number, conf: number, type: string) {
+      const version = await fetch(`${STRING}/json/version`).then((r) => r.json()).then((j) => j[0]?.string_version ?? "").catch(() => "");
+      const ids = await stringPost("tsv/get_string_ids", { identifiers: genes.join("\r"), species: String(species), limit: "1", echo_query: "1" });
+      const rows = ids.trim().split("\n").slice(1).map((l) => l.split("\t"));
+      const mapped = new Map<string, string>(); for (const r of rows) if (r[0] && r[2] && !mapped.has(r[0])) mapped.set(r[0], r[2]);
+      const missing = genes.filter((gn) => !mapped.has(gn));
+      if (!mapped.size) throw new Error("none of the genes were found in STRING for this organism");
+      await pause(1000);   // STRING asks for a second between calls
+      const tsv = await stringPost("tsv/network", { identifiers: [...new Set(mapped.values())].join("\r"), species: String(species), required_score: String(conf), network_type: type });
+      const lines = tsv.trim().split("\n").slice(1).filter(Boolean);
+      const conn = new Set<string>(); for (const l of lines) { const f = l.split("\t"); conn.add(f[2]); conn.add(f[3]); }
+      return { tsv, version, found: mapped.size, missing, edges: new Set(lines.map((l) => { const f = l.split("\t"); return [f[2], f[3]].sort().join("|"); })).size, connected: conn.size };
+    }
     const taxon: Record<string, number> = { hsapiens: 9606, mmusculus: 10090, rnorvegicus: 10116, drerio: 7955, dmelanogaster: 7227, celegans: 6239, scerevisiae: 4932, athaliana: 3702, ggallus: 9031, sscrofa: 9823, btaurus: 9913 };
     (async () => {
       let ids: string[] = [], syms: Record<string, string> = {}, organism = "", src = "";
@@ -162,11 +189,36 @@ const algoHelp: Record<string, string> = {
         catch { $("[data-degs-note]").textContent = "Symbols could not be looked up; the IDs are sent as they are (STRING understands Ensembl and Entrez IDs too)."; }
       }
       const list = () => [...new Set(ids.slice(0, Math.max(1, +nIn.value || 300)).map((i) => syms[i] || i))];
+      // log2 fold changes by the names STRING will show
+      try { const d = JSON.parse(sessionStorage.getItem("rr-degs") || "null"); for (const x of d?.degs ?? []) { lfcOf[syms[x[0]] || x[0]] = +x[2]; lfcOf[x[0]] = +x[2]; } } catch {}
+      if (Object.keys(lfcOf).length) $<HTMLSelectElement>("[data-colour]").value = "lfc";
       const f = $<HTMLFormElement>("[data-string]");
       f.addEventListener("submit", () => { (f.elements.namedItem("identifiers") as HTMLInputElement).value = list().join("\r"); (f.elements.namedItem("species") as HTMLInputElement).value = String(taxon[organism] ?? 9606); });
-      if (!taxon[organism]) $("[data-degs-note]").append(" Organism unknown: STRING will ask for it.");
+      if (!taxon[organism]) $("[data-degs-note]").append(" Organism unknown: choose it on string-db.org.");
       $("[data-degs-copy]").addEventListener("click", async (e) => { try { await navigator.clipboard.writeText(list().join("\n")); flash(e.currentTarget as HTMLElement, "Copied"); } catch {} });
       $("[data-degs-dl]").addEventListener("click", (e) => { download("genes.txt", list().join("\n") + "\n", "text/plain"); flash(e.currentTarget as HTMLElement, "Saved"); });
+      const bst = $<HTMLElement>("[data-build-status]");
+      const build = async () => {
+        if (!taxon[organism]) { bst.textContent = "The organism is not known here, so STRING cannot be queried automatically. Use 'Open them on string-db.org' and drop the export below."; return; }
+        const genes = list(), conf = +v("[data-conf]"), type = v("[data-ntype]"), btn = $<HTMLButtonElement>("[data-build]");
+        btn.disabled = true; bst.textContent = `Asking STRING for ${genes.length} genes…`;
+        try {
+          const r = await stringNetwork(genes, taxon[organism], conf, type);
+          netMeta = { version: r.version, conf, type, sent: genes.length };
+          const name = `string_v${r.version}_${organism}_${type}_${conf}.tsv`;
+          stringTSV = { name, text: r.tsv };
+          $<HTMLElement>("[data-net-dl]").hidden = false;
+          bst.innerHTML = `STRING ${esc(r.version)}: <b>${r.found}</b> of ${genes.length} genes found${r.missing.length ? ` (not found: ${esc(r.missing.slice(0, 8).join(", "))}${r.missing.length > 8 ? ", …" : ""})` : ""}; <b>${r.edges.toLocaleString("en-US")}</b> interactions at score ≥ ${conf / 1000} among <b>${r.connected}</b> genes; ${r.found - r.connected} genes had no partner and are left out.`;
+          if (!r.edges) { bst.append(" No interactions: lower the confidence or send more genes."); btn.disabled = false; return; }
+          await loadText(r.tsv, name);
+          setTimeout(() => main.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
+        } catch (e) { bst.textContent = `STRING could not be reached: ${(e as Error).message}. Try again, or use string-db.org and upload the export.`; }
+        btn.disabled = false;
+      };
+      $("[data-build]").addEventListener("click", build);
+      $("[data-net-dl]").addEventListener("click", (e) => { if (stringTSV) { download(stringTSV.name, stringTSV.text, "text/tab-separated-values"); flash(e.currentTarget as HTMLElement, "Saved"); } });
+      // arriving through the workflow's Next button: build it straight away
+      if (new URLSearchParams(location.search).get("auto") === "1") setTimeout(build, 0);
     })();
     fileIn.addEventListener("change", () => { const f = fileIn.files?.[0]; if (f) f.text().then((t) => loadText(t, f.name)); });
     drop.addEventListener("click", () => fileIn.click());
@@ -193,30 +245,38 @@ const algoHelp: Record<string, string> = {
       $("[data-n-out]").textContent = String(N); $("[data-algo-out]").textContent = algo; $("[data-score-th]").textContent = algo;
       const fmt = (x: number) => (Number.isInteger(x) ? String(x) : x >= 100 ? x.toFixed(1) : x.toPrecision(3));
       $("[data-table]").innerHTML = top.map((i: number, k: number) => `<tr><td>${k + 1}</td><td><b>${esc(g.nodes[i])}</b></td><td class="num">${fmt(scores[algo][i])}</td><td class="r">${algorithms.filter((a) => a !== algo).map((a) => `${a} ${rankOf[a][i]}`).join(" · ")}</td></tr>`).join("");
-      $("[data-caption]").textContent = `Top ${N} hub genes of a protein–protein interaction network of ${g.nodes.length} genes and ${net.edges.length} interactions, ranked by ${algo} as defined in cytoHubba. Nodes are coloured from red (rank 1) to yellow (rank ${N}), node size is proportional to the ${algo} score, and edges are the interactions among these ${N} genes. Top ${N}: ${top.map((i: number) => g.nodes[i]).join(", ")}.`;
+      $("[data-caption]").textContent = `Top ${N} hub genes of a protein–protein interaction network of ${g.nodes.length} genes and ${net.edges.length} interactions, ranked by ${algo} as defined in cytoHubba. ${netMeta ? `The network is STRING ${netMeta.version} (${netMeta.type === "physical" ? "physical" : "full"} network, interaction score ≥ ${netMeta.conf / 1000}) for the top ${netMeta.sent} differentially expressed genes by adjusted p-value. ` : ""}${v("[data-colour]") === "lfc" && Object.keys(lfcOf).length ? "Nodes are coloured by log2 fold change (red up, blue down)" : `Nodes are coloured from red (rank 1) to yellow (rank ${N})`}, node size is proportional to the ${algo} score, and edges are the interactions among these ${N} genes${net.hasScore ? ", with width proportional to the STRING combined score" : ""}. Top ${N}: ${top.map((i: number) => g.nodes[i]).join(", ")}.`;
       // network view
       const labels = $<HTMLInputElement>("[data-labels]").checked;
       const show = topSet;   // the viewer shows the top N and the interactions among them, as cytoHubba does
       const sMax = Math.max(...scores[algo]) || 1, sMin = Math.min(...scores[algo]);
-      const col = (k: number) => { const t = N > 1 ? k / (N - 1) : 0; const a = [192, 57, 43], b = [246, 213, 92]; return `rgb(${a.map((c, j) => Math.round(c + (b[j] - c) * t)).join(",")})`; };
+      const byLfc = v("[data-colour]") === "lfc" && Object.keys(lfcOf).length > 0;
+      const mix = (a: number[], b: number[], t: number) => `rgb(${a.map((c, j) => Math.round(c + (b[j] - c) * t)).join(",")})`;
+      const col = (k: number, name: string) => {
+        if (byLfc) { const l = lfcOf[name]; if (l === undefined) return "#d9dddc"; return mix([238, 238, 238], l > 0 ? [192, 57, 43] : [44, 95, 168], Math.min(1, 0.3 + 0.7 * Math.abs(l) / 6)); }
+        return mix([192, 57, 43], [246, 213, 92], N > 1 ? k / (N - 1) : 0);
+      };
+      $("[data-legend]").innerHTML = byLfc
+        ? `<span><i style="background:#c0392b"></i>up-regulated</span><span><i style="background:#2c5fa8"></i>down-regulated</span><span class="muted">darker = larger |log2FC| (full colour at 6); node size = ${esc(algo)} score; edge width = STRING confidence</span>`
+        : `<span><i style="background:#c0392b"></i>rank 1</span><span><i style="background:#f6d55c"></i>rank N</span><span class="muted">top N hub genes and the interactions between them; node size = chosen score${net.hasScore ? "; edge width = confidence" : ""}</span>`;
       const els: any[] = [];
-      g.nodes.forEach((name: string, i: number) => { if (!show.has(i)) return; const k = top.indexOf(i); els.push({ data: { id: String(i), label: name, color: k >= 0 ? col(k) : "#d9dddc", size: 28 + 40 * ((scores[algo][i] - sMin) / (sMax - sMin || 1)), hub: k >= 0 ? 1 : 0, zi: k >= 0 ? 10 : 1 } }); });
-      net.edges.forEach(([a, b]: [string, string], j: number) => { const ia = g.idx.get(a), ib = g.idx.get(b); if (show.has(ia) && show.has(ib)) els.push({ data: { id: `e${j}`, source: String(ia), target: String(ib), hubEdge: topSet.has(ia) && topSet.has(ib) ? 1 : 0 } }); });
+      g.nodes.forEach((name: string, i: number) => { if (!show.has(i)) return; const k = top.indexOf(i); els.push({ data: { id: String(i), label: name, color: k >= 0 ? col(k, name) : "#d9dddc", size: 22 + 26 * ((scores[algo][i] - sMin) / (sMax - sMin || 1)), hub: k >= 0 ? 1 : 0, zi: k >= 0 ? 10 : 1 } }); });
+      net.edges.forEach(([a, b, sc]: [string, string, number | null], j: number) => { const ia = g.idx.get(a), ib = g.idx.get(b); if (show.has(ia) && show.has(ib)) els.push({ data: { id: `e${j}`, source: String(ia), target: String(ib), hubEdge: topSet.has(ia) && topSet.has(ib) ? 1 : 0, w: sc == null ? 2 : 0.8 + 3.2 * Math.max(0, (sc - 0.15) / 0.85) } }); });
       if (!cy) {
         cy = cytoscape({ container: $("[data-cy]"), elements: els, style: [
-          { selector: "node", style: { "background-color": "data(color)", width: "data(size)", height: "data(size)", label: labels ? "data(label)" : "", "font-size": 12, "font-family": "Arial, Helvetica, sans-serif", "text-valign": "center", "text-halign": "right", "text-margin-x": 3, "border-width": 1, "border-color": "#333", "z-index": "data(zi)" } },
+          { selector: "node", style: { "background-color": "data(color)", width: "data(size)", height: "data(size)", label: labels ? "data(label)" : "", "font-size": 12, "font-family": "Arial, Helvetica, sans-serif", "text-valign": "bottom", "text-halign": "center", "text-margin-y": 3, "text-background-color": "#ffffff", "text-background-opacity": 0.85, "text-background-padding": "1px", "text-background-shape": "roundrectangle", "border-width": 1, "border-color": "#333", "z-index": "data(zi)" } },
           { selector: "node[hub = 1]", style: { "font-weight": "bold", "font-size": 11 } },
-          { selector: "edge", style: { width: 2, "line-color": "#9aa39f", "curve-style": "haystack" } },
-          { selector: "edge[hubEdge = 1]", style: { width: 2, "line-color": "#8a8f8d" } },
-        ], layout: { name: v("[data-layout]"), animate: false, padding: 20 } as any, wheelSensitivity: 0.2 });
+          { selector: "edge", style: { width: "data(w)", "line-color": "#9aa39f", "curve-style": "haystack", opacity: 0.85 } },
+        ], layout: { name: v("[data-layout]"), animate: false, padding: 30, ...coseOpts } as any, wheelSensitivity: 0.2 });
       } else {
         cy.elements().remove(); cy.add(els); cy.style().selector("node").style("label", labels ? "data(label)" : "").update();
-        if (relayout) cy.layout({ name: v("[data-layout]"), animate: false, padding: 20, ...(v("[data-layout]") === "concentric" ? { concentric: (n: any) => n.data("hub") ? 2 : 1, levelWidth: () => 1 } : {}) } as any).run();
+        if (relayout) cy.layout({ name: v("[data-layout]"), animate: false, padding: 30, ...coseOpts, ...(v("[data-layout]") === "concentric" ? { concentric: (n: any) => n.data("hub") ? 2 : 1, levelWidth: () => 1 } : {}) } as any).run();
       }
       if (relayout) cy.fit(undefined, 20);
       (window as any).__hub = { net, g, scores, top: top.map((i: number) => g.nodes[i]), algo, N };
       renderConsensus();
     }
+    const coseOpts = { nodeRepulsion: () => 12000, idealEdgeLength: () => 90, nodeOverlap: 40, randomize: false, componentSpacing: 60 };
     // consensus across several scores
     let consSvg = "", consW = 120, consH = 80;
     function renderConsensus() {
@@ -251,7 +311,7 @@ const algoHelp: Record<string, string> = {
     function components(gr: any) { const seen = new Array(gr.nodes.length).fill(false); let c = 0; for (let s = 0; s < gr.nodes.length; s++) { if (seen[s]) continue; c++; const st = [s]; seen[s] = true; while (st.length) { const x = st.pop()!; for (const y of gr.adj[x]) if (!seen[y]) { seen[y] = true; st.push(y); } } } return c; }
     const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;");
     $("[data-algo]").addEventListener("change", () => render(true)); $("[data-n]").addEventListener("input", () => render(true));
-    $("[data-labels]").addEventListener("change", () => render(false)); $("[data-layout]").addEventListener("change", () => render(true));
+    $("[data-labels]").addEventListener("change", () => render(false)); $("[data-colour]").addEventListener("change", () => render(false)); $("[data-layout]").addEventListener("change", () => render(true));
 
     const flash = (b: HTMLElement, t: string) => { const o = b.textContent; b.textContent = t; b.classList.add("flash"); setTimeout(() => { b.textContent = o; b.classList.remove("flash"); }, 1500); };
     const csvEsc = (s: string) => (/[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s);
