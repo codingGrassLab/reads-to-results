@@ -169,5 +169,16 @@
   "year": 2025,
   "url": "https://www.R-project.org/",
   "type": "software"
+ },
+ "gprofiler": {
+  "key": "kolberg2023gprofiler",
+  "authors": "Kolberg L, Raudvere U, Kuzmin I, Adler P, Vilo J, Peterson H",
+  "title": "g:Profiler—interoperable web service for functional enrichment analysis and gene identifier mapping (2023 update)",
+  "journal": "Nucleic Acids Research",
+  "year": 2023,
+  "volume": "51",
+  "issue": "W1",
+  "pages": "W207-W212",
+  "doi": "10.1093/nar/gkad347"
  }
 }

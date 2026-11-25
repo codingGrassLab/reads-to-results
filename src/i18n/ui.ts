@@ -16,6 +16,7 @@ const ui = {
     "nav.dataset": "Dataset",
     "nav.script": "Script",
     "nav.results": "Results",
+    "nav.enrich": "Enrichment",
     "nav.learn": "Course",
     "nav.read": "Reading plots",
     "nav.methods": "Methods",

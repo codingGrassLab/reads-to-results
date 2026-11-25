@@ -70,6 +70,11 @@ const description = "Upload a DESeq2, edgeR or limma results table, set your thr
         </div>
 
         <div class="rt-fig">
+          <div class="rt-fighead"><h2>Everything in one package</h2><div><button class="btn btn-primary" data-dl="zip">Download ZIP</button><a class="btn btn-ghost" data-enrich href="../enrich/">Enrichment of these genes →</a></div></div>
+          <p class="small muted">The ZIP holds the results table you uploaded, the significant genes (CSV and Excel), both figures as SVG and 300-dpi PNG, the figure legends and methods sentence, a <code>config.json</code> with every setting, and an HTML report that shows it all. Keep it with your DESeq2 script and the raw data: together they reproduce the figures.</p>
+        </div>
+
+        <div class="rt-fig">
           <div class="rt-fighead"><h2>Text for the paper</h2><div><button class="btn btn-ghost" data-copytext>Copy all</button></div></div>
           <p class="small muted">Figure legends for both plots and the sentence that belongs in Methods, all with your thresholds filled in. The <a data-methods-link href="#">Methods writer</a> opens with the same thresholds.</p>
           <div class="mw-text prose" data-papertext></div>
@@ -119,19 +124,19 @@ const description = "Upload a DESeq2, edgeR or limma results table, set your thr
   <script>
     import { parseTable, autoMap, toRows, classify, significantCSV, figureSVG, figureCaption, svgToPng, download, fmtNum, label, type Row, type Mapping, type Thresholds, type FigureOpts } from "../../scripts/deg";
     import { linear, canvas, canvasAxes, tooltip, fmt } from "../../scripts/plot";
-    import { xlsx } from "../../scripts/xlsx";
+    import { xlsx, zipFiles } from "../../scripts/xlsx";
 
     const $ = <T extends Element>(s: string) => document.querySelector<T>(s)!;
     const drop = $<HTMLElement>("[data-drop]"), fileIn = $<HTMLInputElement>("[data-file]"), status = $<HTMLElement>("[data-status]");
     const main = $<HTMLElement>("[data-main]"), mapEl = $<HTMLElement>("[data-map]"), formatEl = $<HTMLElement>("[data-format]");
-    let columns: string[] = [], data: string[][] = [], mapping: Mapping | null = null, format = "", rows: Row[] = [], sourceName = "";
+    let columns: string[] = [], data: string[][] = [], mapping: Mapping | null = null, format = "", rows: Row[] = [], sourceName = "", sourceText = "";
 
     // ── loading ─────────────────────────────────────────────────────────
     const say = (msg: string, err = false) => { status.textContent = msg; status.classList.toggle("err", err); };
     async function loadText(text: string, name: string) {
       try {
         const t = parseTable(text);
-        columns = t.columns; data = t.data; sourceName = name;
+        columns = t.columns; data = t.data; sourceName = name; sourceText = text;
         const am = autoMap(columns);
         mapping = am?.mapping ?? { id: columns[0], symbol: "", mean: "", lfc: "", p: "", padj: "" };
         format = am?.format ?? "";
@@ -265,6 +270,27 @@ const description = "Upload a DESeq2, edgeR or limma results table, set your thr
     document.querySelectorAll<HTMLButtonElement>("[data-dl]").forEach((b) => b.addEventListener("click", async () => {
       if (!rows.length) return;
       const what = b.dataset.dl!;
+      if (what === "zip") {
+        b.textContent = "Packing…";
+        try {
+          const t = thr(), meanName = mapping!.mean || "mean", date = new Date().toISOString().slice(0, 10);
+          const oV = figOpts("volcano"), oM = figOpts("ma"), svgV = figureSVG(rows, oV), svgM = figureSVG(rows, oM);
+          const [pngV, pngM] = await Promise.all([svgToPng(svgV, oV.widthMm, oV.heightMm, 300), svgToPng(svgM, oM.widthMm, oM.heightMm, 300)]);
+          const cls = rows.map((r) => classify(r, t)), nUp = cls.filter((c) => c === "up").length, nDown = cls.filter((c) => c === "down").length, tested = rows.filter((r) => Number.isFinite(r.padj)).length;
+          const config = { tool: "Reads to Results · Explore your results", date, source_file: sourceName, format, columns: mapping, thresholds: t, figure: { width_mm: oV.widthMm, height_mm: oV.heightMm, font_pt: oV.fontPt, label_top: oV.labelTop, labels: oV.labels, threshold_lines: oV.showThresholdLines, title: oV.title ?? "" }, counts: { genes_in_file: rows.length, with_adjusted_p: tested, up: nUp, down: nDown }, colours: { up: "#D55E00", down: "#0072B2", ns: "#BBBBBB" } };
+          const paper = $<HTMLElement>("[data-papertext]").innerText;
+          const sig = rows.map((r, i) => ({ r, c: cls[i] })).filter((x) => x.c !== "ns").sort((a, b) => a.r.padj - b.r.padj);
+          const esc2 = (x: string) => x.replace(/&/g, "&amp;").replace(/</g, "&lt;");
+          const report = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Differential expression report · ${esc2(sourceName)}</title><style>body{font:15px/1.6 system-ui,sans-serif;max-width:900px;margin:2rem auto;padding:0 1rem;color:#222}h1,h2{font-weight:600}table{border-collapse:collapse;font-size:13px;width:100%}td,th{border-bottom:1px solid #ddd;padding:4px 6px;text-align:left}th{background:#f3f3f3}.n{text-align:right;font-variant-numeric:tabular-nums}figure{margin:1.5rem 0}figcaption{font-size:13px;color:#555}.stats{display:flex;gap:1rem;flex-wrap:wrap}.stat{border:1px solid #ddd;border-radius:8px;padding:.6rem 1rem}.stat b{display:block;font-size:1.5rem}pre{background:#f6f6f6;padding:1rem;overflow:auto;font-size:12px;white-space:pre-wrap}</style></head><body><h1>Differential expression report</h1><p>Source file <code>${esc2(sourceName)}</code> (${format || "custom columns"}), made ${date} with Reads to Results. Thresholds: adjusted p &lt; ${t.padj}${t.lfc ? `, |log2 fold change| ≥ ${t.lfc}` : ""}${t.minMean ? `, ${meanName} ≥ ${t.minMean}` : ""}.</p><div class="stats"><div class="stat"><b>${rows.length.toLocaleString("en-US")}</b>genes in file</div><div class="stat"><b>${tested.toLocaleString("en-US")}</b>with an adjusted p</div><div class="stat"><b>${nUp}</b>up</div><div class="stat"><b>${nDown}</b>down</div></div><h2>Volcano plot</h2><figure>${svgV}<figcaption>${esc2(figureCaption(rows, oV, sourceName))}</figcaption></figure><h2>MA plot</h2><figure>${svgM}<figcaption>${esc2(figureCaption(rows, oM, sourceName))}</figcaption></figure><h2>Significant genes (top 100 of ${sig.length})</h2><table><tr><th>Gene</th><th>Symbol</th><th class="n">${esc2(meanName)}</th><th class="n">log2FC</th><th class="n">p</th><th class="n">adjusted p</th><th>direction</th></tr>${sig.slice(0, 100).map(({ r, c }) => `<tr><td>${esc2(r.id)}</td><td>${esc2(r.symbol)}</td><td class="n">${fmtNum(r.mean)}</td><td class="n">${r.lfc.toFixed(2)}</td><td class="n">${fmtNum(r.p)}</td><td class="n">${fmtNum(r.padj)}</td><td>${c}</td></tr>`).join("")}</table><h2>Text for the paper</h2><pre>${esc2(paper)}</pre><h2>Settings</h2><pre>${esc2(JSON.stringify(config, null, 2))}</pre></body></html>`;
+          const readme = [`Differential expression package · ${date}`, ``, `Made with Reads to Results (Explore your results) from ${sourceName}.`, `Thresholds: adjusted p < ${t.padj}${t.lfc ? `, |log2FC| >= ${t.lfc}` : ""}${t.minMean ? `, ${meanName} >= ${t.minMean}` : ""}.`, ``, `Files`, `  report.html                        everything below, in one page`, `  input/${sourceName}      the results table exactly as uploaded`, `  significant_genes.csv / .xlsx     genes passing the thresholds (Excel: up and down sheets)`, `  volcano.svg / volcano_300dpi.png  figure, ${oV.widthMm} x ${oV.heightMm} mm`, `  ma_plot.svg / ma_plot_300dpi.png  figure, ${oM.widthMm} x ${oM.heightMm} mm`, `  paper_text.txt                    figure legends and the results/methods sentence`, `  config.json                       every setting used`, ``, `Nothing here changes the statistics: the package filters and draws the uploaded results.`, `Keep it together with the script that produced the results table and the raw data.`, ``].join("\n");
+          const head = ["gene_id", "symbol", meanName, "log2FoldChange", "pvalue", "padj"];
+          const sheet = (dir: "up" | "down") => ({ name: dir === "up" ? "Up-regulated" : "Down-regulated", rows: [head, ...rows.filter((r) => classify(r, t) === dir).sort((a, b) => a.padj - b.padj).map((r) => [r.id, r.symbol, r.mean, r.lfc, r.p, r.padj])] });
+          const xl = new Uint8Array(await xlsx([sheet("up"), sheet("down")]).arrayBuffer());
+          const files: [string, string | Uint8Array][] = [["README.txt", readme], ["report.html", report], [`input/${sourceName}`, sourceText], ["significant_genes.csv", significantCSV(rows, t, meanName)], ["significant_genes.xlsx", xl], ["volcano.svg", svgV], ["volcano_300dpi.png", new Uint8Array(await pngV.arrayBuffer())], ["ma_plot.svg", svgM], ["ma_plot_300dpi.png", new Uint8Array(await pngM.arrayBuffer())], ["paper_text.txt", paper + "\n"], ["config.json", JSON.stringify(config, null, 2)]];
+          download(`de_package_${stem()}_${date}.zip`, zipFiles(files)); flash(b, "Saved");
+        } catch (e) { console.error(e); flash(b, "Failed"); }
+        return;
+      }
       if (what === "xlsx") {
         const t = thr(), meanName = mapping!.mean || "mean";
         const head = ["gene_id", "symbol", meanName, "log2FoldChange", "pvalue", "padj"];
@@ -279,7 +305,13 @@ const description = "Upload a DESeq2, edgeR or limma results table, set your thr
       b.textContent = "Rendering…";
       try { const png = await svgToPng(svg, o.widthMm, o.heightMm, 300); download(`${kind}_${stem()}_300dpi.png`, png); flash(b, "Saved"); } catch { flash(b, "Failed"); }
     }));
+    $<HTMLAnchorElement>("[data-enrich]").addEventListener("click", () => {
+      if (!rows.length) return;
+      const t = thr(), id = (r: Row) => r.id.replace(/\..*$/, "");
+      const payload = { source: sourceName, thresholds: t, up: rows.filter((r) => classify(r, t) === "up").map(id), down: rows.filter((r) => classify(r, t) === "down").map(id), background: rows.filter((r) => Number.isFinite(r.padj)).map(id) };
+      try { sessionStorage.setItem("rr-enrich", JSON.stringify(payload)); } catch {}
+    });
     $("[data-copytext]").addEventListener("click", async (e) => { try { await navigator.clipboard.writeText($<HTMLElement>("[data-papertext]").innerText); flash(e.currentTarget as HTMLElement, "Copied"); } catch {} });
-    (window as any).__rt = { get rows() { return rows; }, figureSVG, figOpts, thr, loadText, xlsx, classify };
+    (window as any).__rt = { get rows() { return rows; }, figureSVG, figOpts, thr, loadText, xlsx, classify, zipFiles };
   </script>
 </Base>
