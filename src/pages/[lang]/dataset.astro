@@ -123,8 +123,8 @@ const organisms: [string, string][] = [["", "any organism"], ["Homo sapiens", "h
       const rec = e.result?.[uid];
       if (!rec || rec.accession !== gse) throw new Error(`${gse} was not found in GEO.`);
       const rel = (rec.extrelations ?? []).find((x: any) => x.relationtype === "SRA");
-      if (!rel) throw new Error(`${gse} has no linked SRA project in GEO (maybe only processed data, or the link is missing). Check the GEO page.`);
-      return { srp: rel.targetobject, title: rec.title, summary: rec.summary, n: +rec.n_samples, taxon: rec.taxon, type: rec.gdstype };
+      if (!rel && !rec.bioproject) throw new Error(`${gse} has no linked SRA project or BioProject in GEO (maybe only processed data). Check the GEO page.`);
+      return { srp: rel?.targetobject ?? "", prj: rec.bioproject ?? "", title: rec.title, summary: rec.summary, n: +rec.n_samples, taxon: rec.taxon, type: rec.gdstype };
     }
 
     async function lookup(accRaw: string) {
@@ -134,7 +134,7 @@ const organisms: [string, string][] = [["", "any organism"], ["Homo sapiens", "h
       try {
         say("Looking up…");
         let q = "", geo: any = null;
-        if (/^GSE\d+$/.test(acc)) { geo = await geoToSra(acc); q = `secondary_study_accession=${geo.srp}`; }
+        if (/^GSE\d+$/.test(acc)) { geo = await geoToSra(acc); q = geo.srp ? `secondary_study_accession=${geo.srp}` : `study_accession=${geo.prj}`; }
         else if (/^[SED]RP\d+$/.test(acc)) q = `secondary_study_accession=${acc}`;
         else if (/^PRJ[NED][AB]\d+$/.test(acc)) q = `study_accession=${acc}`;
         else throw new Error("Enter a GEO series (GSE…), an SRA/ENA study (SRP…, ERP…, DRP…) or a BioProject (PRJNA…, PRJEB…).");
@@ -155,7 +155,7 @@ const organisms: [string, string][] = [["", "any organism"], ["Homo sapiens", "h
         guessConditions();
         render();
         const off = runs.filter((r) => !r.on).length;
-        say(`${runs.length} runs from ENA${geo ? `, via GEO → ${geo.srp}` : ""}.${off ? ` ${off} non-RNA-seq runs (${[...new Set(runs.filter((r) => !r.on).map((r) => r.strategy))].join(", ")}) are unticked.` : ""}`);
+        say(`${runs.length} runs from ENA${geo ? `, via GEO → ${geo.srp || geo.prj}` : ""}.${off ? ` ${off} non-RNA-seq runs (${[...new Set(runs.filter((r) => !r.on).map((r) => r.strategy))].join(", ")}) are unticked.` : ""}`);
       } catch (e) { say((e as Error).message, true); }
     }
 
