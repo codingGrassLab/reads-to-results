@@ -4,7 +4,7 @@
 
 **Live site: https://codinggrasslab.github.io/reads-to-results/**
 
-A free course in bulk RNA-seq analysis. One real experiment (airway) is followed from raw reads to differentially expressed genes and pathways with Salmon and DESeq2, every command shown with its actual output. Static site built with Astro.
+A free course in bulk RNA-seq analysis. One real experiment (airway) is followed from raw reads to differentially expressed genes and pathways with Salmon and DESeq2, every command shown with its actual output.
 
 - **Course** (11 lessons): raw reads → QC → trimming → how Salmon works → salmon quant → tximport → DESeq2 → plots → enrichment → your own project.
 - **Break it yourself**: switches (design, lost sample, two donors, swapped label) over eight real DESeq2 runs on airway.
