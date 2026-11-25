@@ -79,12 +79,11 @@ const description = "Enter a GEO, SRA or ENA accession. Get the runs, their meta
       const t = await r.text(); return t.trim() ? JSON.parse(t) : [];
     }
     async function geoToSra(gse: string): Promise<{ srp: string; title: string; summary: string; n: number; taxon: string; type: string }> {
-      const s = await fetch(`https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi?db=gds&term=${gse}[ACCN]&retmode=json`).then((r) => r.json());
-      const ids: string[] = s.esearchresult?.idlist ?? [];
-      if (!ids.length) throw new Error(`${gse} was not found in GEO.`);
-      const e = await fetch(`https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esummary.fcgi?db=gds&id=${ids.join(",")}&retmode=json`).then((r) => r.json());
-      const recs = ids.map((i) => e.result[i]).filter((x) => x && x.accession === gse);
-      const rec = recs[0] ?? e.result[ids[0]];
+      // In the GDS database a series GSEnnn has the UID 200000000 + nnn, so no search is needed.
+      const uid = String(200000000 + Number(gse.slice(3)));
+      const e = await fetch(`https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esummary.fcgi?db=gds&id=${uid}&retmode=json`).then((r) => r.json());
+      const rec = e.result?.[uid];
+      if (!rec || rec.accession !== gse) throw new Error(`${gse} was not found in GEO.`);
       const rel = (rec.extrelations ?? []).find((x: any) => x.relationtype === "SRA");
       if (!rel) throw new Error(`${gse} has no linked SRA project in GEO (maybe only processed data, or the link is missing). Check the GEO page.`);
       return { srp: rel.targetobject, title: rec.title, summary: rec.summary, n: +rec.n_samples, taxon: rec.taxon, type: rec.gdstype };
@@ -113,11 +112,12 @@ const description = "Enter a GEO, SRA or ENA accession. Get the runs, their meta
           seen[x.sample_accession] = (seen[x.sample_accession] ?? 0) + 1;
           return { run: x.run_accession, sample: x.sample_accession, alias: x.sample_alias, title: x.sample_title || x.experiment_title || "", layout: x.library_layout, strategy: x.library_strategy, instrument: x.instrument_model,
             reads: +x.read_count || 0, bases: +x.base_count || 0, fastq: (x.fastq_ftp || "").split(";").filter(Boolean), bytes: (x.fastq_bytes || "").split(";").map(Number), md5: (x.fastq_md5 || "").split(";"), organism: x.scientific_name,
-            on: true, name: x.run_accession, condition: "", batch: "", tech: seen[x.sample_accession] > 1 } as Run;
+            on: /rna/i.test(x.library_strategy || ""), name: x.run_accession, condition: "", batch: "", tech: seen[x.sample_accession] > 1 } as Run;
         }).sort((a: Run, b: Run) => a.run.localeCompare(b.run));
         guessConditions();
         render();
-        say(`${runs.length} runs from ENA${geo ? `, via GEO → ${geo.srp}` : ""}.`);
+        const off = runs.filter((r) => !r.on).length;
+        say(`${runs.length} runs from ENA${geo ? `, via GEO → ${geo.srp}` : ""}.${off ? ` ${off} non-RNA-seq runs (${[...new Set(runs.filter((r) => !r.on).map((r) => r.strategy))].join(", ")}) are unticked.` : ""}`);
       } catch (e) { say((e as Error).message, true); }
     }
 
