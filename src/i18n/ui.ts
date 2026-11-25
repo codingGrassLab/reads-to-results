@@ -27,7 +27,7 @@ const ui = {
     "home.eyebrow": "RNA-seq · DESeq2 · real data",
     "home.title": "From raw reads to a result you can defend",
     "home.lead":
-      "One real experiment, followed from FASTQ files to a list of genes and pathways. Each step shows the command, the actual output, and why it is done. Nothing here is made up: every number was computed by one R script on the real data.",
+      "One real experiment, followed from FASTQ files to a list of genes and pathways. Each step shows the command, the actual output, and why it is done.",
     "home.ctaStart": "Start the course",
     "home.ctaRead": "How to read the plots",
     "home.learnTitle": "The course",
