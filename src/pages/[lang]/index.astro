@@ -1,5 +1,6 @@
 ---
 import Base from "../../layouts/Base.astro";
+import HeroVolcano from "../../components/HeroVolcano.astro";
 import { langs, t, path, asset, type Lang } from "../../i18n/ui";
 import { lessons, split } from "../../lib/lessons";
 export const getStaticPaths = () => langs.map((lang) => ({ params: { lang } }));
@@ -19,9 +20,7 @@ const read = await lessons("read", lang);
           <a class="btn btn-ghost" href={path(lang, "read")}>{t(lang, "home.ctaRead")}</a>
         </div>
       </div>
-      <div class="hero-art">
-        <img src={asset("/plots/volcano.png")} alt="Volcano plot of the airway dataset: log2 fold change against adjusted p-value, with the strongest genes labelled" width="1800" height="1600" />
-      </div>
+      <HeroVolcano />
     </section>
 
     <section class="section">

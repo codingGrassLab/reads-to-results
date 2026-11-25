@@ -1,0 +1,229 @@
+---
+// The home page's living volcano plot: the 15,826 tested airway genes rise from "no change" to
+// their real place, the evidence lifting them; hover or search a gene; switch between "changed"
+// and "changed more than two-fold". Data: public/data/volcano.json (written by analysis/run.R).
+import { asset } from "../i18n/ui";
+---
+<figure class="hv" data-hv data-src={asset("/data/volcano.json")}>
+  <div class="hv-top">
+    <div class="hv-count" aria-live="polite"><b data-hv-n>0</b><span data-hv-label>genes changed with dexamethasone</span><small data-hv-split>&nbsp;</small></div>
+    <div class="hv-chips" role="group" aria-label="Which genes count as changed">
+      <button type="button" class="on" data-hv-mode="any">adjusted p &lt; 0.05</button>
+      <button type="button" data-hv-mode="two">…and at least two-fold</button>
+    </div>
+  </div>
+  <div class="hv-stage">
+    <canvas data-hv-canvas aria-label="Volcano plot of 15,826 airway genes: log2 fold change against minus log10 adjusted p-value"></canvas>
+    <div class="hv-tip" data-hv-tip hidden></div>
+  </div>
+  <figcaption class="hv-foot">
+    <span class="hv-key"><i style="background:#c0392b"></i>up</span><span class="hv-key"><i style="background:#2c5fa8"></i>down</span><span class="hv-key"><i style="background:#c3c8c6"></i>not changed</span>
+    <label class="hv-find"><span class="sr">Find a gene</span><input data-hv-find list="hv-genes" placeholder="find a gene, e.g. FKBP5" spellcheck="false" autocomplete="off" /></label>
+    <datalist id="hv-genes"></datalist>
+    <button type="button" class="hv-replay" data-hv-replay title="Play the animation again">↻ replay</button>
+  </figcaption>
+</figure>
+
+<style>
+  .hv { margin: 0; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); padding: 1rem 1rem 0.7rem; }
+  .hv-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 0.8rem; flex-wrap: wrap; }
+  .hv-count { display: flex; flex-direction: column; line-height: 1.15; }
+  .hv-count b { font-family: var(--f-display); font-weight: 500; font-size: 2.4rem; color: var(--ink); font-variant-numeric: tabular-nums; }
+  .hv-count span { font-size: 0.88rem; color: var(--text); }
+  .hv-count small { font-size: 0.78rem; color: var(--muted); margin-top: 0.15rem; }
+  .hv-chips { display: flex; gap: 0.3rem; flex-wrap: wrap; }
+  .hv-chips button { font: inherit; font-size: 0.75rem; padding: 0.3rem 0.65rem; border-radius: 999px; border: 1px solid var(--line-strong); background: var(--bg); color: var(--muted); cursor: pointer; transition: all 0.2s; }
+  .hv-chips button:hover { border-color: var(--accent); color: var(--ink); }
+  .hv-chips button.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .hv-stage { position: relative; margin-top: 0.4rem; }
+  .hv-stage canvas { display: block; width: 100%; aspect-ratio: 1.12; cursor: crosshair; touch-action: manipulation; }
+  .hv-tip { position: absolute; pointer-events: none; background: var(--ink); color: #fff; font-size: 0.78rem; line-height: 1.4; padding: 0.45rem 0.6rem; border-radius: 8px; white-space: nowrap; box-shadow: 0 6px 18px rgba(0, 0, 0, 0.18); transform: translate(-50%, calc(-100% - 12px)); z-index: 2; }
+  .hv-tip b { font-size: 0.88rem; }
+  .hv-tip .dim { opacity: 0.7; }
+  .hv-foot { display: flex; align-items: center; gap: 0.4rem 0.9rem; flex-wrap: wrap; font-size: 0.78rem; color: var(--muted); margin-top: 0.3rem; }
+  .hv-key i { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 0.3rem; vertical-align: 0; }
+  .hv-find { margin-left: auto; }
+  .hv-find input { font: inherit; font-size: 0.78rem; padding: 0.25rem 0.55rem; width: 11.5rem; border: 1px solid var(--line-strong); border-radius: 999px; background: var(--bg); color: var(--ink); }
+  .hv-find input:focus { outline: 2px solid var(--accent); border-color: transparent; }
+  .hv-replay { font: inherit; font-size: 0.78rem; border: 0; background: none; color: var(--accent); cursor: pointer; padding: 0.2rem 0.3rem; }
+  .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+</style>
+
+<script>
+  type Row = [string, string, number, number, number, number, number]; // id, symbol, baseMean, lfc, slfc, pvalue, padj
+  const LABELS = ["DUSP1", "PER1", "KLF15", "ZBTB16", "FKBP5", "CRISPLD2", "TSC22D3", "ALOX15B", "SPARCL1", "CACNB2"];
+  const UP = [192, 57, 43], DOWN = [44, 95, 168], NS = [195, 200, 198];
+
+  for (const fig of document.querySelectorAll<HTMLElement>("[data-hv]")) init(fig);
+
+  async function init(fig: HTMLElement) {
+    const canvas = fig.querySelector<HTMLCanvasElement>("[data-hv-canvas]")!, ctx = canvas.getContext("2d")!;
+    const tip = fig.querySelector<HTMLElement>("[data-hv-tip]")!, nEl = fig.querySelector<HTMLElement>("[data-hv-n]")!, split = fig.querySelector<HTMLElement>("[data-hv-split]")!, label = fig.querySelector<HTMLElement>("[data-hv-label]")!;
+    const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+    let rows: Row[];
+    try { rows = (await fetch(fig.dataset.src!).then((r) => r.json())).rows; } catch { label.textContent = "could not load the data"; return; }
+    const n = rows.length;
+    const X = new Float32Array(n), Y = new Float32Array(n), delay = new Float32Array(n);
+    const yv = rows.map((r) => -Math.log10(Math.max(r[6], 1e-300)));
+    const yMax = Math.ceil(Math.max(...yv) / 20) * 20, xMin = -6, xMax = 10;
+    // genes rise in order of evidence, with a little jitter so the cloud breathes
+    const order = [...rows.keys()].sort((a, b) => yv[a] - yv[b]);
+    let seed = 7; const rnd = () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296);
+    order.forEach((i, k) => (delay[i] = (k / n) * 0.55 + rnd() * 0.12));
+    const sym = new Map<string, number>(); rows.forEach((r, i) => { if (r[1]) sym.set(r[1].toUpperCase(), i); });
+    fig.querySelector("#hv-genes")!.innerHTML = LABELS.map((g) => `<option value="${g}">`).join("");
+
+    let mode: "any" | "two" = "any", modeT = 1, prevMode: "any" | "two" = "any";
+    const isSig = (i: number, m: "any" | "two") => rows[i][6] < 0.05 && (m === "any" || Math.abs(rows[i][3]) >= 1);
+    const counts = (m: "any" | "two") => { let u = 0, d = 0; for (let i = 0; i < n; i++) if (isSig(i, m)) rows[i][3] > 0 ? u++ : d++; return { u, d }; };
+    const C = { any: counts("any"), two: counts("two") };
+
+    // layout
+    let W = 0, H = 0, dpr = 1, L = 46, R = 12, T = 10, B = 36;
+    const sx = (v: number) => L + ((v - xMin) / (xMax - xMin)) * (W - L - R);
+    const sy = (v: number) => H - B - (v / yMax) * (H - T - B);
+    function resize() {
+      const r = canvas.getBoundingClientRect(); dpr = Math.min(2, devicePixelRatio || 1);
+      W = r.width; H = r.height; canvas.width = Math.round(W * dpr); canvas.height = Math.round(H * dpr);
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      for (let i = 0; i < n; i++) { X[i] = sx(Math.max(xMin, Math.min(xMax, rows[i][3]))); Y[i] = sy(yv[i]); }
+      buildGrid(); draw();
+    }
+
+    // spatial grid for hover
+    let grid = new Map<number, number[]>(); const G = 14;
+    function buildGrid() { grid = new Map(); for (let i = 0; i < n; i++) { const k = Math.floor(X[i] / G) * 10000 + Math.floor(Y[i] / G); (grid.get(k) ?? grid.set(k, []).get(k)!).push(i); } }
+    function nearest(px: number, py: number) {
+      let best = -1, bd = 12 * 12; const gx = Math.floor(px / G), gy = Math.floor(py / G);
+      for (let a = gx - 1; a <= gx + 1; a++) for (let b = gy - 1; b <= gy + 1; b++) for (const i of grid.get(a * 10000 + b) ?? []) { const d = (X[i] - px) ** 2 + (Y[i] - py) ** 2; if (d < bd || (d === bd && yv[i] > yv[best])) { bd = d; best = i; } }
+      return best;
+    }
+
+    // animation state
+    let t0 = 0, rise = reduce ? 1 : 0, labelsA = reduce ? 1 : 0, hover = -1, found = -1, pulse = 0, shown = 0;
+    const ease = (t: number) => 1 - Math.pow(1 - Math.max(0, Math.min(1, t)), 3);
+    const mix = (a: number[], b: number[], t: number) => a.map((v, k) => Math.round(v + (b[k] - v) * t));
+    const colorOf = (i: number, m: "any" | "two") => (isSig(i, m) ? (rows[i][3] > 0 ? UP : DOWN) : NS);
+
+    function draw() {
+      ctx.clearRect(0, 0, W, H);
+      ctx.font = "11px Inter, system-ui, sans-serif"; ctx.fillStyle = "#6b7673"; ctx.strokeStyle = "#e6e9e7"; ctx.lineWidth = 1;
+      // axes and grid
+      for (let v = Math.ceil(xMin / 2) * 2; v <= xMax; v += 2) { const x = sx(v); ctx.beginPath(); ctx.moveTo(x, T); ctx.lineTo(x, H - B); ctx.stroke(); ctx.textAlign = "center"; ctx.fillText(String(v), x, H - B + 15); }
+      for (let v = 0; v <= yMax; v += 20) { const y = sy(v); ctx.beginPath(); ctx.moveTo(L, y); ctx.lineTo(W - R, y); ctx.stroke(); ctx.textAlign = "right"; ctx.fillText(String(v), L - 6, y + 4); }
+      ctx.fillStyle = "#2d3836"; ctx.textAlign = "center"; ctx.fillText("log₂ fold change  (← lower · higher →)", (L + W - R) / 2, H - 6);
+      ctx.save(); ctx.translate(12, (T + H - B) / 2); ctx.rotate(-Math.PI / 2); ctx.fillText("evidence: −log₁₀ adjusted p", 0, 0); ctx.restore();
+      // thresholds
+      ctx.setLineDash([4, 4]); ctx.strokeStyle = "rgba(45,56,54,0.35)";
+      const yT = sy(-Math.log10(0.05)); ctx.beginPath(); ctx.moveTo(L, yT); ctx.lineTo(W - R, yT); ctx.stroke();
+      const two = mode === "two" ? modeT : 1 - modeT;
+      if (two > 0.01) { ctx.globalAlpha = two; for (const v of [-1, 1]) { ctx.beginPath(); ctx.moveTo(sx(v), T); ctx.lineTo(sx(v), H - B); ctx.stroke(); } ctx.globalAlpha = 1; }
+      ctx.setLineDash([]);
+      // points: grey first, coloured on top
+      const base = sy(0), x0 = sx(0);
+      for (const pass of [0, 1]) for (let k = 0; k < n; k++) {
+        const i = order[k];
+        const a = isSig(i, prevMode), b = isSig(i, mode);
+        const c = modeT >= 1 || a === b ? colorOf(i, mode) : mix(colorOf(i, prevMode), colorOf(i, mode), modeT);
+        const grey = c === NS || (!a && !b);
+        if ((pass === 0) !== grey) continue;
+        const p = ease((rise - delay[i]) / 0.45);
+        if (p <= 0) continue;
+        const x = x0 + (X[i] - x0) * p, y = base + (Y[i] - base) * p;
+        ctx.fillStyle = `rgba(${c[0]},${c[1]},${c[2]},${grey ? 0.55 : 0.72})`;
+        ctx.beginPath(); ctx.arc(x, y, grey ? 1.5 : 2.1, 0, 6.2832); ctx.fill();
+      }
+      // labels with leader lines, placed so they do not overlap
+      if (labelsA > 0) {
+        ctx.globalAlpha = labelsA; ctx.font = "600 11px Inter, system-ui, sans-serif";
+        const boxes: number[][] = [];
+        for (const g of LABELS) {
+          const i = sym.get(g); if (i === undefined) continue;
+          const w = ctx.measureText(g).width + 8, h = 16;
+          const cands = [[10, -22], [10, 8], [-w - 10, -22], [-w - 10, 8], [14, -40], [-w - 14, -40], [16, 24], [-w - 16, 24]];
+          let pos: number[] | null = null, inside: number[] | null = null;
+          for (const [dx, dy] of cands) {
+            const bx = X[i] + dx, by = Y[i] + dy;
+            if (bx < L || bx + w > W - R || by < T || by + h > H - B) continue;
+            inside ??= [dx, dy];
+            if (boxes.some(([x, y, ww, hh]) => bx < x + ww && bx + w > x && by < y + hh && by + h > y)) continue;
+            pos = [dx, dy]; break;
+          }
+          pos ??= inside ?? cands[2];
+          // never draw outside the plot area
+          const bx = Math.max(L, Math.min(W - R - w, X[i] + pos[0])), by = Math.max(T, Math.min(H - B - h, Y[i] + pos[1])); boxes.push([bx, by, w, h]);
+          ctx.strokeStyle = "rgba(21,32,31,0.45)"; ctx.beginPath(); ctx.moveTo(X[i], Y[i]); ctx.lineTo(bx + (bx + w / 2 < X[i] ? w : 0), by + h / 2); ctx.stroke();
+          ctx.fillStyle = "rgba(255,255,255,0.9)"; ctx.fillRect(bx, by, w, h);
+          ctx.fillStyle = "#15201f"; ctx.textAlign = "left"; ctx.fillText(g, bx + 4, by + 12);
+        }
+        ctx.globalAlpha = 1;
+      }
+      // hovered / found gene
+      for (const [i, ring] of [[found, 1], [hover, 0]] as [number, number][]) {
+        if (i < 0) continue;
+        ctx.strokeStyle = "#15201f"; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(X[i], Y[i], 5 + (ring ? 4 * Math.abs(Math.sin(pulse)) : 0), 0, 6.2832); ctx.stroke(); ctx.lineWidth = 1;
+      }
+    }
+
+    function setCount(v: number) { nEl.textContent = Math.round(v).toLocaleString("en-US"); }
+    function setText() {
+      const c = C[mode];
+      label.textContent = mode === "any" ? "genes changed with dexamethasone" : "genes changed at least two-fold";
+      split.textContent = `${c.u.toLocaleString("en-US")} up · ${c.d.toLocaleString("en-US")} down · of ${n.toLocaleString("en-US")} genes tested`;
+    }
+    let raf = 0;
+    function play() {
+      cancelAnimationFrame(raf); setText();
+      if (reduce) { rise = 1; labelsA = 1; setCount(C[mode].u + C[mode].d); draw(); return; }
+      rise = 0; labelsA = 0; t0 = performance.now();
+      const total = C[mode].u + C[mode].d;
+      const step = (now: number) => {
+        const t = (now - t0) / 1000;
+        rise = Math.min(1, t / 2.2); labelsA = Math.max(0, Math.min(1, (t - 2.1) / 0.6));
+        setCount(total * ease(Math.max(0, (t - 0.6) / 1.8)));
+        draw();
+        if (t < 2.8) raf = requestAnimationFrame(step);
+      };
+      raf = requestAnimationFrame(step);
+    }
+    function switchMode(m: "any" | "two") {
+      if (m === mode) return;
+      const from = C[mode].u + C[mode].d, to = C[m].u + C[m].d;
+      prevMode = mode; mode = m; modeT = reduce ? 1 : 0; setText();
+      fig.querySelectorAll<HTMLButtonElement>("[data-hv-mode]").forEach((b) => b.classList.toggle("on", b.dataset.hvMode === m));
+      if (reduce) { setCount(to); draw(); return; }
+      const s = performance.now();
+      const step = (now: number) => { modeT = Math.min(1, (now - s) / 700); setCount(from + (to - from) * ease(modeT)); draw(); if (modeT < 1) requestAnimationFrame(step); };
+      requestAnimationFrame(step);
+    }
+    function showTip(i: number) {
+      if (i < 0) { tip.hidden = true; return; }
+      const r = rows[i], fold = Math.pow(2, Math.abs(r[3]));
+      const dir = r[6] < 0.05 ? (r[3] > 0 ? "higher" : "lower") : "";
+      tip.innerHTML = `<b>${r[1] || r[0]}</b> <span class="dim">${r[1] ? r[0] : ""}</span><br>${dir ? `${fold < 10 ? fold.toFixed(1) : Math.round(fold)}× ${dir} with dexamethasone` : `no clear change (${r[3] > 0 ? "+" : ""}${r[3].toFixed(2)} log₂)`}<br><span class="dim">adjusted p ${r[6] < 1e-3 ? r[6].toExponential(1) : r[6].toFixed(3)} · mean count ${Math.round(r[2]).toLocaleString("en-US")}</span>`;
+      tip.style.left = `${Math.max(90, Math.min(W - 90, X[i]))}px`; tip.style.top = `${Y[i]}px`; tip.hidden = false;
+    }
+    canvas.addEventListener("pointermove", (e) => {
+      if (rise < 1) return;
+      const r = canvas.getBoundingClientRect(); const i = nearest(e.clientX - r.left, e.clientY - r.top);
+      if (i !== hover) { hover = i; showTip(i >= 0 ? i : found); draw(); }
+    });
+    canvas.addEventListener("pointerleave", () => { hover = -1; showTip(found); draw(); });
+    fig.querySelectorAll<HTMLButtonElement>("[data-hv-mode]").forEach((b) => b.addEventListener("click", () => switchMode(b.dataset.hvMode as "any" | "two")));
+    fig.querySelector("[data-hv-replay]")!.addEventListener("click", play);
+    const find = fig.querySelector<HTMLInputElement>("[data-hv-find]")!;
+    let pulseRaf = 0;
+    find.addEventListener("input", () => {
+      const i = sym.get(find.value.trim().toUpperCase()) ?? -1;
+      found = i; showTip(i); cancelAnimationFrame(pulseRaf);
+      if (i >= 0 && !reduce) { const s = performance.now(); const p = (now: number) => { pulse = (now - s) / 180; draw(); if (now - s < 2400 && found === i) pulseRaf = requestAnimationFrame(p); }; pulseRaf = requestAnimationFrame(p); } else draw();
+      find.setAttribute("aria-invalid", String(!!find.value.trim() && i < 0));
+    });
+    new ResizeObserver(() => resize()).observe(canvas);
+    resize();
+    // start when the figure comes into view
+    const io = new IntersectionObserver((es) => { if (es.some((e) => e.isIntersecting)) { io.disconnect(); play(); } }, { threshold: 0.3 });
+    io.observe(fig);
+    (window as any).__hv = { counts: C, n, play, switchMode };
+  }
+</script>
