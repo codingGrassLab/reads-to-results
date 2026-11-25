@@ -94,12 +94,13 @@ const year = new Date().getFullYear();
       <div class="container">
         <div class="row">
           <div>
-            <div><Mark size={18} /> <strong>{siteName}</strong> · © {year} Amarta Chowdhury</div>
+            <div><Mark size={18} /> <strong>{siteName}</strong></div>
           </div>
           <ul>
             {nav.map((n) => <li><a href={n.href}>{n.label}</a></li>)}
           </ul>
         </div>
+        <p class="copy">© {year} Amarta Chowdhury</p>
       </div>
     </footer>
 
