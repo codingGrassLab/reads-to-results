@@ -55,7 +55,7 @@ const algoHelp: Record<string, string> = {
         <div class="hb-fig"><div data-cy class="hb-cy"></div><div class="legend"><span><i style="background:#c0392b"></i>rank 1</span><span><i style="background:#f6d55c"></i>rank N</span><span class="muted">top N hub genes and the interactions between them; node size = chosen score</span></div></div>
         <p class="caption" data-caption></p>
         <h2 style="margin-top:2rem">Top <span data-n-out>10</span> hub genes by <span data-algo-out>MCC</span></h2>
-        <div class="table-wrap"><table class="hb-table"><thead><tr><th>Rank</th><th>Gene</th><th class="num" data-score-th>MCC</th><th class="num">Degree</th><th class="num">Betweenness</th><th class="num">Closeness</th><th class="num">Ranks in the other scores</th></tr></thead><tbody data-table></tbody></table></div>
+        <div class="table-wrap"><table class="hb-table"><thead><tr><th>Rank</th><th>Gene</th><th class="num" data-score-th>MCC</th><th>Ranks in the other scores</th></tr></thead><tbody data-table></tbody></table></div>
         <h2 style="margin-top:2.5rem">Consensus across scores</h2>
         <p class="small muted">Pick several scores; each gives its own top N list (N above). Genes found by every chosen score are the consensus hubs; the Venn (2–3 scores) or UpSet plot (more) shows how the lists overlap.</p>
         <div class="hb-cons">
@@ -137,7 +137,7 @@ const algoHelp: Record<string, string> = {
       $("[data-stats]").innerHTML = [[g.nodes.length, "nodes"], [net.edges.length, "edges"], [comps, "connected components"], [scores.diameter, "diameter"], [(2 * net.edges.length / g.nodes.length).toFixed(2), "mean degree"]].map(([a, b]) => `<div class="stat"><b>${a}</b><span>${b}</span></div>`).join("");
       $("[data-n-out]").textContent = String(N); $("[data-algo-out]").textContent = algo; $("[data-score-th]").textContent = algo;
       const fmt = (x: number) => (Number.isInteger(x) ? String(x) : x >= 100 ? x.toFixed(1) : x.toPrecision(3));
-      $("[data-table]").innerHTML = top.map((i: number, k: number) => `<tr><td>${k + 1}</td><td><b>${esc(g.nodes[i])}</b></td><td class="num">${fmt(scores[algo][i])}</td><td class="num">${scores.Degree[i]}</td><td class="num">${fmt(scores.Betweenness[i])}</td><td class="num">${fmt(scores.Closeness[i])}</td><td class="r">${algorithms.filter((a) => a !== algo).map((a) => `${a} ${rankOf[a][i]}`).join(" · ")}</td></tr>`).join("");
+      $("[data-table]").innerHTML = top.map((i: number, k: number) => `<tr><td>${k + 1}</td><td><b>${esc(g.nodes[i])}</b></td><td class="num">${fmt(scores[algo][i])}</td><td class="r">${algorithms.filter((a) => a !== algo).map((a) => `${a} ${rankOf[a][i]}`).join(" · ")}</td></tr>`).join("");
       $("[data-caption]").textContent = `Top ${N} hub genes of a protein–protein interaction network of ${g.nodes.length} genes and ${net.edges.length} interactions, ranked by ${algo} as defined in cytoHubba. Nodes are coloured from red (rank 1) to yellow (rank ${N}), node size is proportional to the ${algo} score, and edges are the interactions among these ${N} genes. Top ${N}: ${top.map((i: number) => g.nodes[i]).join(", ")}.`;
       // network view
       const labels = $<HTMLInputElement>("[data-labels]").checked;
