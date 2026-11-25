@@ -20,11 +20,11 @@ export function regions(sets: SetInput[]): Map<number, string[]> {
 
 export function vennSVG(sets: SetInput[], o: { widthMm: number; fontPt: number; title?: string }): string {
   const n = sets.length; if (n < 2 || n > 3) throw new Error("Venn needs 2 or 3 sets");
-  const W = o.widthMm * MM, H = W * (n === 2 ? 0.62 : 0.85), f = o.fontPt;
+  const W = o.widthMm * MM, H = W * (n === 2 ? 0.62 : 0.92), f = o.fontPt;
   const reg = regions(sets);
   const count = (mask: number) => (reg.get(mask) ?? []).length;
   const r = n === 2 ? W * 0.26 : W * 0.24;
-  const centres: [number, number][] = n === 2 ? [[W * 0.37, H * 0.52], [W * 0.63, H * 0.52]] : [[W * 0.37, H * 0.42], [W * 0.63, H * 0.42], [W * 0.5, H * 0.68]];
+  const centres: [number, number][] = n === 2 ? [[W * 0.37, H * 0.52], [W * 0.63, H * 0.52]] : [[W * 0.37, H * 0.4], [W * 0.63, H * 0.4], [W * 0.5, H * 0.64]];
   const P: string[] = [`<svg xmlns="http://www.w3.org/2000/svg" width="${o.widthMm}mm" height="${(H / MM).toFixed(1)}mm" viewBox="0 0 ${W.toFixed(1)} ${H.toFixed(1)}"><rect width="100%" height="100%" fill="#fff"/>`];
   if (o.title) P.push(`<text x="${f}" y="${f * 1.3}" ${font(f)} font-weight="bold">${esc(o.title)}</text>`);
   centres.forEach(([cx, cy], i) => P.push(`<circle cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="${r.toFixed(1)}" fill="${setColours[i]}" fill-opacity="0.35" stroke="${setColours[i]}" stroke-width="0.8"/>`));
