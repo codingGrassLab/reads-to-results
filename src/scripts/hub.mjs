@@ -82,17 +82,20 @@ export function scoreAll(g, opts = {}) {
   const mnc = new Array(n).fill(0), dmnc = new Array(n).fill(0);
   for (let v = 0; v < n; v++) {
     const nb = adj[v]; if (!nb.length) continue; const set = new Set(nb); const seen = new Set(); let best = 0, bestE = 0;
-    for (const s0 of nb) { if (seen.has(s0)) continue; const comp = [s0]; seen.add(s0); for (let h = 0; h < comp.length; h++) for (const w of adj[comp[h]]) if (set.has(w) && !seen.has(w)) { seen.add(w); comp.push(w); } let e = 0; const cs = new Set(comp); for (const a of comp) for (const b of adj[a]) if (b > a && cs.has(b)) e++; if (comp.length > best) { best = comp.length; bestE = e; } }
+    for (const s0 of nb) { if (seen.has(s0)) continue; const comp = [s0]; seen.add(s0); for (let h = 0; h < comp.length; h++) for (const w of adj[comp[h]]) if (set.has(w) && !seen.has(w)) { seen.add(w); comp.push(w); } let e = 0; const cs = new Set(comp); for (const a of comp) for (const b of adj[a]) if (b > a && cs.has(b)) e++; if (comp.length > best || (comp.length === best && e > bestE)) { best = comp.length; bestE = e; } }   // equal sizes: the denser one
     mnc[v] = best; dmnc[v] = best > 1 ? bestE / Math.pow(best, 1.7) : 0;
   }
   // MCC: sum over maximal cliques containing v of (|C|-1)!; a node whose cliques are all edges scores its degree
-  const mcc = new Array(n).fill(0);
-  const fact = (k) => { let f = 1; for (let i = 2; i <= k; i++) f *= i; return f; };
+  // exact integers (BigInt): with large cliques (k-1)! reaches 1e80, and a small clique's 5! added in floating point is
+  // lost, which turns different MCC values into false ties and changes the ranking
+  const mccBig = new Array(n).fill(0n);
+  const factCache = [1n]; const fact = (k) => { for (let i = factCache.length; i <= k; i++) factCache[i] = factCache[i - 1] * BigInt(i); return factCache[k]; };
   const adjSets = adj.map((a) => new Set(a));
   let cliqueCount = 0;
-  const report = (R) => { cliqueCount++; const w = fact(R.length - 1); for (const v of R) mcc[v] += w; };
+  const report = (R) => { cliqueCount++; const w = fact(R.length - 1); for (const v of R) mccBig[v] += w; };
   const bk = (R, P, X) => { if (cliqueCount > 200000) return; if (!P.length && !X.length) { if (R.length >= 2) report(R); return; } let u = -1, best = -1; for (const c of [...P, ...X]) { let cnt = 0; for (const p of P) if (adjSets[c].has(p)) cnt++; if (cnt > best) { best = cnt; u = c; } } for (const v of P.filter((p) => !adjSets[u].has(p))) { bk([...R, v], P.filter((p) => adjSets[v].has(p)), X.filter((x) => adjSets[v].has(x))); P = P.filter((p) => p !== v); X.push(v); } };
   bk([], [...Array(n).keys()], []);
+  const mcc = mccBig.map(Number), mccComplete = cliqueCount <= 200000;
   // EPC: edge percolated component, mean size of the component containing v over `iters` random edge removals (p = 0.5)
   const iters = opts.epcIters ?? 1000; let seed = opts.seed ?? 42;
   const rnd = () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; };
@@ -106,11 +109,12 @@ export function scoreAll(g, opts = {}) {
     for (let v = 0; v < n; v++) epc[v] += sizes[comp[v]];
   }
   for (let v = 0; v < n; v++) epc[v] /= iters;
-  return { Degree: deg, MCC: mcc, DMNC: dmnc, MNC: mnc, EPC: epc, BottleNeck: bottleneck, EcCentricity: ecc, Closeness: close, Radiality: rad, Betweenness: betw, Stress: stress, ClusteringCoefficient: cc, diameter: diam };
+  return { MCCexact: mccBig, mccComplete, Degree: deg, MCC: mcc, DMNC: dmnc, MNC: mnc, EPC: epc, BottleNeck: bottleneck, EcCentricity: ecc, Closeness: close, Radiality: rad, Betweenness: betw, Stress: stress, ClusteringCoefficient: cc, diameter: diam };
 }
 
 /** Rank nodes by one score (higher = more central), ties by degree then name. */
 export function rank(g, scores, algo) {
-  const s = scores[algo];
-  return [...Array(g.nodes.length).keys()].sort((a, b) => (s[b] - s[a]) || (scores.Degree[b] - scores.Degree[a]) || g.nodes[a].localeCompare(g.nodes[b]));
+  const s = scores[algo], ex = algo === "MCC" ? scores.MCCexact : null;
+  const cmp = ex ? (a, b) => (ex[b] > ex[a] ? 1 : ex[b] < ex[a] ? -1 : 0) : (a, b) => s[b] - s[a];
+  return [...Array(g.nodes.length).keys()].sort((a, b) => cmp(a, b) || (scores.Degree[b] - scores.Degree[a]) || g.nodes[a].localeCompare(g.nodes[b]));
 }

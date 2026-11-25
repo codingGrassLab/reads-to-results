@@ -207,7 +207,7 @@ const description = "Upload a DESeq2, edgeR or limma results table, set your thr
         symbolTable ??= await fetch("/data/symbols_human.json").then((r) => r.json());
         let n = 0;
         for (const r of rows) { const s = symbolTable![r.id.replace(/\..*$/, "")]; if (s) { r.symbol = s; n++; } }
-        say(`${status.textContent} Added gene symbols for ${n.toLocaleString("en-US")} Ensembl IDs (org.Hs.eg.db).`);
+        say(`${status.textContent} Added gene symbols for ${n.toLocaleString("en-US")} Ensembl IDs (HGNC, else org.Hs.eg.db).`);
         redraw();
       } catch { /* leave IDs as labels */ }
     }

@@ -41,18 +41,21 @@ export function loadEngine(onProgress: Progress): Promise<any> {
   return ready;
 }
 
-export interface RunConfig { countsCSV: string; samplesCSV: string; sampleCol: string; conditionCol: string; refLevel: string; trtLevel: string; batchCol: string; minCounts: number; minSamples: number; alpha: number; shrink: boolean }
+export interface RunConfig { countsCSV: string; samplesCSV: string; idCol?: string; sampleCol: string; conditionCol: string; refLevel: string; trtLevel: string; batchCol: string; minCounts: number; minSamples: number; alpha: number; shrink: boolean }
 export interface RunResult { resultsCSV: string; log: string; nGenes: number; nAfterFilter: number; nTested: number; nUp: number; nDown: number; sizeFactors: Record<string, number>; versions: { deseq2: string; r: string; apeglm: string } }
 
 const rstr = (s: string) => `"${s.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
 
 /** The R code that runs (reads /counts.csv and /samples.csv, writes /results.csv). */
 export function deseq2Code(c: Omit<RunConfig, "countsCSV" | "samplesCSV">): string {
+  if (c.idCol === undefined) c = { ...c, idCol: "" };
   const design = c.batchCol ? `~ ${c.batchCol} + ${c.conditionCol}` : `~ ${c.conditionCol}`;
   const code = `
     log <- character(0); note <- function(...) log <<- c(log, paste0(...))
     raw <- read.csv("/counts.csv", check.names = FALSE, stringsAsFactors = FALSE, colClasses = "character")
-    ids <- trimws(raw[[1]]); raw <- raw[-1]
+    idc <- ${c.idCol ? `match(${rstr(c.idCol)}, names(raw))` : "1L"}; if (is.na(idc)) idc <- 1L
+    ids <- trimws(raw[[idc]]); raw <- raw[-idc]
+    note("Gene IDs from the column ", ${rstr(c.idCol || "(first column)")})
     samples <- read.csv("/samples.csv", stringsAsFactors = FALSE, check.names = FALSE, colClasses = "character")
     samples <- samples[!is.na(samples[[${rstr(c.sampleCol)}]]) & samples[[${rstr(c.sampleCol)}]] != "", , drop = FALSE]
     cv <- samples[[${rstr(c.conditionCol)}]]

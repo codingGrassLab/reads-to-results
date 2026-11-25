@@ -233,6 +233,7 @@ const algoHelp: Record<string, string> = {
       const t0 = performance.now();
       scores = scoreAll(g);
       say(`${sourceName}: ${net.format}, ${net.nodes.length} nodes, ${net.edges.length} edges; twelve scores computed in ${((performance.now() - t0) / 1000).toFixed(1)} s.`);
+      if (!scores.mccComplete) say(`${status.textContent} Warning: the network has more than 200,000 maximal cliques; MCC was stopped there and is incomplete. Use a higher STRING confidence or fewer genes.`, true);
       render(true);
     }
     function render(relayout = false) {

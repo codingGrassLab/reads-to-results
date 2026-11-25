@@ -24,9 +24,10 @@ const description = "Real DESeq2 (R, compiled to WebAssembly) running inside thi
         </div>
         <div class="box">
           <h3>1 · Count matrix</h3>
-          <p class="small muted">Raw integer counts, genes in rows, samples in columns, first column = gene ID (CSV/TSV, optionally .gz). From Salmon + tximport, featureCounts, or a GEO count file.</p>
+          <p class="small muted">Raw integer counts, genes in rows, samples in columns, one column of gene IDs (CSV/TSV, optionally .gz; extra annotation columns are fine). From Salmon + tximport, featureCounts, or a GEO count file.</p>
           <div class="drop" data-drop="counts" tabindex="0"><input type="file" accept=".csv,.tsv,.txt,.gz" hidden data-file="counts" /><strong>Choose or drop the count matrix</strong></div>
           <p class="small" data-counts-info></p>
+          <label class="rn-idcol" data-idwrap hidden>Gene ID column <select data-idcol></select></label>
         </div>
         <div class="box">
           <h3>2 · Sample sheet</h3>
@@ -89,6 +90,8 @@ const description = "Real DESeq2 (R, compiled to WebAssembly) running inside thi
     .rn-btns { display: flex; gap: 0.5rem; flex-wrap: wrap; margin: 0.5rem 0; }
     .rn-log { font-size: 0.78rem; line-height: 1.5; max-height: 320px; overflow: auto; white-space: pre-wrap; margin: 0.6rem 0 0; }
     .rn-log.err { color: var(--up); }
+    .rn-idcol { display: block; font-size: 0.86rem; color: var(--muted); }
+    .rn-idcol select { display: block; width: 100%; margin-top: 0.2rem; }
     .rn-geobox { border-color: var(--accent); }
     :global(.rn-files) { margin: 0.5rem 0; display: grid; gap: 0.2rem; }
     :global(.rn-files label) { display: flex !important; gap: 0.4rem; align-items: baseline; margin: 0 !important; color: var(--text) !important; font-size: 0.82rem !important; word-break: break-all; }
@@ -109,7 +112,7 @@ const description = "Real DESeq2 (R, compiled to WebAssembly) running inside thi
     import { geoDir, listCountFiles, fetchSamples, matchColumns, sampleSheet, fetchGeoText, type GeoSample, type CountFile } from "../../scripts/geo";
     const $ = <T extends Element>(s: string) => document.querySelector<T>(s)!;
     const log = $<HTMLElement>("[data-log]"), runBtn = $<HTMLButtonElement>("[data-run]");
-    let countsText = "", countsName = "", samplesText = "", samplesName = "", sheet: { columns: string[]; data: string[][] } | null = null, matrixCols: string[] = [];
+    let countsText = "", countsName = "", samplesText = "", samplesName = "", sheet: { columns: string[]; data: string[][] } | null = null, matrixCols: string[] = [], idCol = "";
     const lines: string[] = [];
     const say = (m: string, err = false) => { lines.push(m); if (lines.length > 200) lines.shift(); log.textContent = lines.join("\n"); log.classList.toggle("err", err); log.scrollTop = log.scrollHeight; };
 
@@ -124,7 +127,23 @@ const description = "Real DESeq2 (R, compiled to WebAssembly) running inside thi
       countsText = text; countsName = name;
       const first = text.slice(0, 20000).split(/\r?\n/)[0] ?? "";
       const d = detectDelimiter(text.slice(0, 20000));
-      matrixCols = first.split(d).map((x) => x.trim().replace(/^"|"$/g, "")).slice(1);
+      const header = first.split(d).map((x) => x.trim().replace(/^"|"$/g, ""));
+      // which column holds the gene IDs: not numeric, nearly unique, Ensembl/ID-like (the first column is not always it)
+      const sample = text.slice(0, 400000).split(/\r?\n/).slice(1, 2001).filter((l) => l.trim()).map((l) => l.split(d).map((x) => x.trim().replace(/^"|"$/g, "")));
+      const scoreCol = (i: number) => {
+        const v = sample.map((r) => r[i] ?? "").filter(Boolean); if (!v.length) return -1;
+        const numeric = v.filter((x) => /^-?[\d.,eE+-]+$/.test(x)).length / v.length;
+        if (numeric > 0.9 && !/id$|entrez/i.test(header[i])) return -1;
+        const uniq = new Set(v).size / v.length;
+        return uniq * 10 + (v.filter((x) => /^(ENS[A-Z]*G\d|FBgn|WBGene|AT[1-5CM]G)/i.test(x)).length / v.length) * 4 + (/(^|_|\b)(gene_?id|geneid|ensembl|ensg|^id$|entrez)/i.test(header[i]) ? 2 : 0) + (/symbol|name/i.test(header[i]) ? 0.5 : 0) - (/type|biotype|chr|strand|desc/i.test(header[i]) ? 5 : 0);
+      };
+      const scores = header.map((_, i) => scoreCol(i));
+      idCol = header[scores.indexOf(Math.max(...scores))] || header[0];
+      if (!header[0] && scores[0] >= 0) idCol = header[0];
+      const idSel = $<HTMLSelectElement>("[data-idcol]");
+      idSel.innerHTML = header.map((h, i) => (scores[i] >= 0 ? `<option value="${h.replace(/"/g, "&quot;")}">${h || "(first column)"}</option>` : "")).join("");
+      idSel.value = idCol; $<HTMLElement>("[data-idwrap]").hidden = false;
+      matrixCols = header.filter((h) => h !== idCol);
       const nRows = text.split(/\r?\n/).filter((l) => l.trim()).length - 1;
       $("[data-counts-info]").textContent = `${name}: ${nRows.toLocaleString("en-US")} genes × ${matrixCols.length} columns (${matrixCols.slice(0, 4).join(", ")}${matrixCols.length > 4 ? ", …" : ""})`;
       if (d !== ",") countsText = text.split(/\r?\n/).map((l) => l.split(d).map((x) => x.replace(/^"|"$/g, "")).map((x) => (/[",]/.test(x) ? `"${x.replace(/"/g, '""')}"` : x)).join(",")).join("\n");
@@ -195,6 +214,7 @@ const description = "Real DESeq2 (R, compiled to WebAssembly) running inside thi
       drop.addEventListener("dragover", (e) => { e.preventDefault(); drop.classList.add("over"); }); drop.addEventListener("dragleave", () => drop.classList.remove("over"));
       drop.addEventListener("drop", (e) => { e.preventDefault(); drop.classList.remove("over"); const f = e.dataTransfer?.files?.[0]; if (f) take(f); });
     }
+    $("[data-idcol]").addEventListener("change", (e) => { idCol = (e.target as HTMLSelectElement).value; say(`Gene IDs taken from the column "${idCol || "(first column)"}".`); });
     ["sampleCol", "batchCol"].forEach((k) => sel(k).addEventListener("change", refresh));
     sel("conditionCol").addEventListener("change", fillLevels); sel("refLevel").addEventListener("change", refresh); sel("trtLevel").addEventListener("change", refresh);
 
@@ -294,7 +314,7 @@ const description = "Real DESeq2 (R, compiled to WebAssembly) running inside thi
     let last: any = null;
     runBtn.addEventListener("click", async () => {
       runBtn.disabled = true; $<HTMLElement>("[data-out]").hidden = true; resetFrom(2);
-      const cfg = { countsCSV: countsText, samplesCSV: samplesText, sampleCol: sel("sampleCol").value, conditionCol: sel("conditionCol").value, refLevel: sel("refLevel").value, trtLevel: sel("trtLevel").value, batchCol: sel("batchCol").value,
+      const cfg = { countsCSV: countsText, samplesCSV: samplesText, idCol, sampleCol: sel("sampleCol").value, conditionCol: sel("conditionCol").value, refLevel: sel("refLevel").value, trtLevel: sel("trtLevel").value, batchCol: sel("batchCol").value,
         minCounts: +$<HTMLInputElement>('[data-c="minCounts"]').value || 0, minSamples: +$<HTMLInputElement>('[data-c="minSamples"]').value || 1, alpha: +$<HTMLInputElement>('[data-c="alpha"]').value || 0.05, shrink: $<HTMLInputElement>('[data-c="shrink"]').checked };
       const t0 = performance.now();
       try {

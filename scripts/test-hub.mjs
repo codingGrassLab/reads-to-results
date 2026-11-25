@@ -63,5 +63,14 @@ print(json.dumps(st))`;
   ok(s.EPC.every((x) => x >= 1 && x <= n), `n=${n}: EPC within [1, n]`);
   ok(s.BottleNeck.every((x) => Number.isInteger(x) && x >= 0 && x <= n), `n=${n}: BottleNeck is a count in [0, n]`);
 }
+// MCC precision: a 30-clique plus a triangle on one of its nodes; exact value 29! + 2!, which floating point rounds to 29!
+{
+  const K = [...Array(30).keys()].map((i) => "k" + i), edges = [];
+  for (let i = 0; i < 30; i++) for (let j = i + 1; j < 30; j++) edges.push([K[i], K[j], null]);
+  edges.push(["k0", "x", null], ["k0", "y", null], ["x", "y", null]);
+  const g = buildGraph([...K, "x", "y"], edges), s = scoreAll(g, { epcIters: 10 });
+  let f = 1n; for (let i = 2n; i <= 29n; i++) f *= i;
+  ok(s.MCCexact[g.idx.get("k0")] === f + 2n && s.MCCexact[g.idx.get("k1")] === f, "MCC is exact for large cliques (29! + 2! is not rounded to 29!)");
+}
 console.log(failed ? `\n${failed} check(s) failed` : "\nall hub checks passed");
 process.exit(failed ? 1 : 0);
