@@ -1,6 +1,6 @@
 ---
 import Base from "../../layouts/Base.astro";
-import { langs, t, path, type Lang } from "../../i18n/ui";
+import { langs, t, path, asset, type Lang } from "../../i18n/ui";
 import { lessons, split } from "../../lib/lessons";
 export const getStaticPaths = () => langs.map((lang) => ({ params: { lang } }));
 const lang = Astro.params.lang as Lang;
@@ -20,7 +20,7 @@ const read = await lessons("read", lang);
         </div>
       </div>
       <div class="hero-art">
-        <img src="/plots/volcano.png" alt="Volcano plot of the airway dataset: log2 fold change against adjusted p-value, with the strongest genes labelled" width="1800" height="1600" />
+        <img src={asset("/plots/volcano.png")} alt="Volcano plot of the airway dataset: log2 fold change against adjusted p-value, with the strongest genes labelled" width="1800" height="1600" />
       </div>
     </section>
 

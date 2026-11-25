@@ -1,2 +1,4 @@
 User-agent: *
 Allow: /
+
+Sitemap: https://codinggrasslab.github.io/reads-to-results/sitemap-index.xml

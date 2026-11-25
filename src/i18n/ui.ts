@@ -67,17 +67,22 @@ export function t(lang: Lang, key: UIKey): string {
 }
 
 /** `/en/`, `/en/learn/`, … (always with a trailing slash). */
+/** The site's base path on GitHub Pages ("/reads-to-results"), without a trailing slash. */
+export const base = (import.meta.env.BASE_URL || "/").replace(/\/$/, "");
+/** A file in public/ (images, downloads), under the base path. */
+export const asset = (p: string) => `${base}${p.startsWith("/") ? p : "/" + p}`;
+
 export function path(lang: Lang, ...parts: string[]): string {
   const p = parts.filter(Boolean).join("/");
-  return `/${lang}/${p}${p ? "/" : ""}`;
+  return `${base}/${lang}/${p}${p ? "/" : ""}`;
 }
 
 /** The same page in another language. */
 export function switchLang(pathname: string, to: Lang): string {
-  const segs = pathname.split("/").filter(Boolean);
+  const segs = (base && pathname.startsWith(base) ? pathname.slice(base.length) : pathname).split("/").filter(Boolean);
   if (segs.length && (langs as string[]).includes(segs[0])) segs[0] = to;
   else segs.unshift(to);
-  return "/" + segs.join("/") + "/";
+  return base + "/" + segs.join("/") + "/";
 }
 
 /** Numbers shown in running text. */

@@ -15,7 +15,7 @@ const txt = { en: { gene: "gene-wise estimate", fit: "fitted trend", final: "fin
     const txt = readData<Record<string, string>>(root);
     const status = root.querySelector<HTMLElement>(".status")!;
     let rows: number[][];
-    try { rows = (await fetch("/data/dispersion.json").then((r) => r.json())).rows; } catch { status.textContent = txt.fail; return; }
+    try { rows = (await fetch(import.meta.env.BASE_URL.replace(/\/$/, "") + "/data/dispersion.json").then((r) => r.json())).rows; } catch { status.textContent = txt.fail; return; }
     status.remove();
     const W = 640, H = 420, m = { l: 62, r: 16, t: 12, b: 50 };
     const lx = rows.map((r) => Math.log10(r[0])), ly = rows.flatMap((r) => [Math.log10(r[1]), Math.log10(r[3])]);

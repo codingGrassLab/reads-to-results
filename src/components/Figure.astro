@@ -1,6 +1,8 @@
 ---
 interface Props { src: string; alt: string; width?: number; height?: number }
-const { src, alt, width, height } = Astro.props;
+import { asset } from "../i18n/ui";
+const { alt, width, height } = Astro.props;
+const src = Astro.props.src.startsWith("/") ? asset(Astro.props.src) : Astro.props.src;
 ---
 <figure>
   <img src={src} alt={alt} loading="lazy" width={width} height={height} />
