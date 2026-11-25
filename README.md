@@ -2,6 +2,7 @@
 
 Analysis tools for RNA-seq differential-expression results (publication-ready figures, tables and methods text, all in the browser), with a complete worked analysis of one real dataset behind them. Static site built with Astro; every number and plot comes from one R script.
 
+- **Run DESeq2 in your browser**: real DESeq2 via webR (R → WebAssembly; packages from the Bioconductor r-universe wasm builds, locfit namespace stub hosted in `public/wasm/`). Count matrix + sample sheet → results table, handed to the results tool.
 - **Explore your results**: upload a DESeq2/edgeR/limma table → thresholds → significant genes (CSV/XLSX), volcano and MA plots (SVG, 300-dpi PNG at journal widths), figure legends.
 - **Methods writer**: tools, versions and settings → methods paragraph with verified citations and BibTeX.
 - **Course** (11 lessons): raw reads → QC → trimming → how Salmon works → salmon quant → tximport → DESeq2 → plots → enrichment → your own project.

@@ -1,0 +1,247 @@
+---
+import Base from "../../layouts/Base.astro";
+import { langs, path, type Lang } from "../../i18n/ui";
+export const getStaticPaths = () => langs.map((lang) => ({ params: { lang } }));
+const lang = Astro.params.lang as Lang;
+const title = "Run DESeq2 in your browser";
+const description = "Real DESeq2 (R, compiled to WebAssembly) running inside this page. Give it a count matrix and a sample sheet; get the results table, then explore it, enrich it and write it up here. Nothing is uploaded.";
+---
+<Base lang={lang} title={title} description={description} active="run">
+  <div class="container">
+    <div class="page-head prose">
+      <h1>{title}</h1>
+      <p class="lead">{description}</p>
+      <p class="small muted"><strong>What this is.</strong> The actual DESeq2 package from Bioconductor, run by R inside your browser through <a href="https://docs.r-wasm.org/webr/latest/">webR</a>. The first run downloads R and DESeq2 (roughly 60–90 MB, then cached by the browser) and takes a minute; the analysis itself takes seconds to a few minutes depending on the matrix. Works for typical bulk RNA-seq matrices (tens of thousands of genes, up to a few dozen samples). One detail of the browser build: the dispersion trend uses DESeq2's default parametric fit; the alternative local fit is not available here (see the note at the bottom).</p>
+    </div>
+
+    <section class="rn">
+      <div class="rn-side">
+        <div class="box">
+          <h3>1 · Count matrix</h3>
+          <p class="small muted">Raw integer counts, genes in rows, samples in columns, first column = gene ID (CSV/TSV, optionally .gz). From Salmon + tximport, featureCounts, or a GEO count file.</p>
+          <div class="drop" data-drop="counts" tabindex="0"><input type="file" accept=".csv,.tsv,.txt,.gz" hidden data-file="counts" /><strong>Choose or drop the count matrix</strong></div>
+          <p class="small" data-counts-info></p>
+          <details class="rn-geo"><summary class="small">…or fetch a count file from GEO</summary>
+            <p class="small muted">GEO series often carry the submitter's count matrix as a supplementary file. Enter the GSE, pick the file, and it is read straight from NCBI's FTP mirror into this page. (NCBI's own standardized count matrices cannot be fetched this way; download that file from the GEO page and drop it above.)</p>
+            <div class="rn-geoform"><input data-gse placeholder="GSE226151" /><button type="button" class="btn btn-ghost" data-geo-list>List files</button></div>
+            <div class="small" data-geo-files></div>
+          </details>
+        </div>
+        <div class="box">
+          <h3>2 · Sample sheet</h3>
+          <p class="small muted">CSV with one row per sample: a column whose values match the matrix columns, a condition column, optionally a batch or donor column.</p>
+          <div class="drop" data-drop="samples" tabindex="0"><input type="file" accept=".csv,.tsv,.txt" hidden data-file="samples" /><strong>Choose or drop the sample sheet</strong></div>
+          <p class="small" data-samples-info></p>
+          <div data-sheet-handoff class="small muted"></div>
+        </div>
+        <div class="box">
+          <h3>3 · Design</h3>
+          <label>Sample column <select data-c="sampleCol"></select></label>
+          <label>Condition column <select data-c="conditionCol"></select></label>
+          <label>Reference level (control) <select data-c="refLevel"></select></label>
+          <label>Treatment level <select data-c="trtLevel"></select></label>
+          <label>Batch / donor column (optional) <select data-c="batchCol"><option value="">none</option></select></label>
+          <label>Keep genes with ≥ <input type="number" data-c="minCounts" value="10" min="0" style="width:4.5rem;display:inline-block" /> counts in ≥ <input type="number" data-c="minSamples" value="3" min="1" style="width:4.5rem;display:inline-block" /> samples</label>
+          <label>Adjusted p threshold (alpha) <input type="number" data-c="alpha" value="0.05" step="any" min="0" max="1" /></label>
+          <label class="chk"><input type="checkbox" data-c="shrink" checked /> add apeglm-shrunken fold changes</label>
+        </div>
+        <button type="button" class="btn btn-ghost" data-example>Load the airway example (63,677 genes × 8 samples)</button>
+      </div>
+
+      <div class="rn-main">
+        <div class="box">
+          <h3>4 · Run</h3>
+          <p class="small muted">Design: <code data-design>~ condition</code></p>
+          <div class="rn-btns"><button type="button" class="btn btn-primary" data-run disabled>Run DESeq2</button><button type="button" class="btn btn-ghost" data-load>Load the engine now</button></div>
+          <pre class="rn-log" data-log>Waiting for a count matrix and a sample sheet.</pre>
+        </div>
+        <div class="box" data-out hidden>
+          <h3>Results</h3>
+          <div class="stats" data-stats></div>
+          <p class="small muted" data-versions></p>
+          <div class="rn-btns"><a class="btn btn-primary" data-explore href="../results/">Explore these results →</a><button type="button" class="btn btn-ghost" data-dl="results">Download deseq2_results.csv</button><button type="button" class="btn btn-ghost" data-dl="log">Download the run log</button></div>
+          <h4 style="margin:1rem 0 .3rem">Top genes</h4>
+          <div class="table-wrap"><table><thead><tr><th>Gene</th><th class="num">baseMean</th><th class="num">log2FC</th><th class="num">p</th><th class="num">padj</th></tr></thead><tbody data-top></tbody></table></div>
+        </div>
+      </div>
+    </section>
+
+    <div class="prose" style="margin-top:3rem">
+      <h2>What runs, exactly</h2>
+      <p>DESeq2 (the released Bioconductor package, compiled to WebAssembly by the Bioconductor r-universe) with <code>DESeqDataSetFromMatrix → DESeq() → results(contrast, alpha)</code> and, when ticked, <code>lfcShrink(type = "apeglm")</code>. The design is <code>~ batch + condition</code> or <code>~ condition</code>. Size factors are the median of ratios, dispersions are shrunk toward a parametric trend, and p-values are Benjamini–Hochberg adjusted with independent filtering, exactly as on your computer. The one difference: DESeq2's <em>local</em> dispersion fit (used only if you ask for <code>fitType = "local"</code>, or as an automatic fallback when the parametric fit cannot converge) depends on the <code>locfit</code> package, which does not compile to WebAssembly; the browser build carries a namespace stub instead. If the parametric fit ever fails here, the run stops with that message rather than silently switching methods.</p>
+      <p>The same count matrix and settings give the same numbers in R on your computer; the airway example reproduces the site's own analysis (<a href={path(lang, "data")}>data page</a>). Report it as DESeq2 with the version shown after the run, and cite Love et al. 2014; the <a href={path(lang, "methods")}>Methods writer</a> does this.</p>
+    </div>
+  </div>
+
+  <style>
+    .rn { display: grid; grid-template-columns: minmax(0, 380px) minmax(0, 1fr); gap: 2rem; align-items: start; margin-top: 1.5rem; }
+    @media (max-width: 960px) { .rn { grid-template-columns: 1fr; } }
+    .rn-side, .rn-main { display: flex; flex-direction: column; gap: 1rem; }
+    .box { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 0.9rem 1rem 1rem; }
+    .box h3 { margin: 0 0 0.4rem; font-size: 1.05rem; }
+    .box label { display: block; font-size: 0.86rem; color: var(--muted); margin: 0.5rem 0; }
+    .box select, .box input[type="number"] { display: block; width: 100%; margin-top: 0.2rem; padding: 0.35rem 0.5rem; font: inherit; font-size: 0.92rem; color: var(--ink); background: var(--bg); border: 1px solid var(--line-strong); border-radius: 6px; }
+    .box label.chk { display: flex; gap: 0.5rem; align-items: center; } .box label.chk input { margin: 0; }
+    .drop { border: 2px dashed var(--line-strong); border-radius: var(--radius-sm); padding: 1rem; text-align: center; background: var(--bg); cursor: pointer; font-size: 0.9rem; }
+    .drop:hover, .drop.over { border-color: var(--accent); background: var(--accent-soft); }
+    .rn-btns { display: flex; gap: 0.5rem; flex-wrap: wrap; margin: 0.5rem 0; }
+    .rn-log { font-size: 0.78rem; line-height: 1.5; max-height: 320px; overflow: auto; white-space: pre-wrap; margin: 0.6rem 0 0; }
+    .rn-log.err { color: var(--up); }
+    .rn-geo { margin-top: 0.6rem; } .rn-geo summary { cursor: pointer; color: var(--accent); }
+    .rn-geoform { display: flex; gap: 0.4rem; margin: 0.4rem 0; } .rn-geoform input { flex: 1; padding: 0.35rem 0.5rem; font: inherit; font-size: 0.9rem; border: 1px solid var(--line-strong); border-radius: 6px; background: var(--bg); font-family: var(--f-mono); }
+    .rn-geoform .btn { padding: 0.35rem 0.8rem; font-size: 0.85rem; }
+    [data-geo-files] a { display: block; margin: 0.25rem 0; }
+    .btn.flash { background: var(--accent); color: #fff; }
+  </style>
+
+  <script>
+    import { parseTable, detectDelimiter } from "../../scripts/deg";
+    import { runDESeq2, loadEngine } from "../../scripts/engine";
+    const $ = <T extends Element>(s: string) => document.querySelector<T>(s)!;
+    const log = $<HTMLElement>("[data-log]"), runBtn = $<HTMLButtonElement>("[data-run]");
+    let countsText = "", countsName = "", samplesText = "", samplesName = "", sheet: { columns: string[]; data: string[][] } | null = null, matrixCols: string[] = [];
+    const lines: string[] = [];
+    const say = (m: string, err = false) => { lines.push(m); if (lines.length > 200) lines.shift(); log.textContent = lines.join("\n"); log.classList.toggle("err", err); log.scrollTop = log.scrollHeight; };
+
+    // servers (and GitHub Pages) often send .gz files already decompressed, so sniff the gzip magic bytes
+    async function readBlob(b: Blob): Promise<string> {
+      const head = new Uint8Array(await b.slice(0, 2).arrayBuffer());
+      if (head[0] === 0x1f && head[1] === 0x8b) return new Response(b.stream().pipeThrough(new DecompressionStream("gzip"))).text();
+      return b.text();
+    }
+    const readFile = (f: File) => readBlob(f);
+    function setCounts(text: string, name: string) {
+      countsText = text; countsName = name;
+      const first = text.slice(0, 20000).split(/\r?\n/)[0] ?? "";
+      const d = detectDelimiter(text.slice(0, 20000));
+      matrixCols = first.split(d).map((x) => x.trim().replace(/^"|"$/g, "")).slice(1);
+      const nRows = text.split(/\r?\n/).filter((l) => l.trim()).length - 1;
+      $("[data-counts-info]").textContent = `${name}: ${nRows.toLocaleString("en-US")} genes × ${matrixCols.length} samples (${matrixCols.slice(0, 4).join(", ")}${matrixCols.length > 4 ? ", …" : ""})`;
+      if (d !== ",") countsText = text.split(/\r?\n/).map((l) => l.split(d).map((x) => x.replace(/^"|"$/g, "")).map((x) => (/[",]/.test(x) ? `"${x.replace(/"/g, '""')}"` : x)).join(",")).join("\n");
+      refresh();
+    }
+    function setSamples(text: string, name: string) {
+      samplesText = text; samplesName = name;
+      const t = parseTable(text); sheet = { columns: t.columns.map((c) => c || "sample"), data: t.data };
+      if (t.delimiter !== ",") samplesText = [sheet.columns.join(","), ...t.data.map((r) => r.map((x) => (/[",]/.test(x) ? `"${x.replace(/"/g, '""')}"` : x)).join(","))].join("\n");
+      $("[data-samples-info]").textContent = `${name}: ${t.data.length} samples, columns ${sheet.columns.join(", ")}`;
+      fillSelects(); refresh();
+    }
+    const sel = (k: string) => $<HTMLSelectElement>(`[data-c="${k}"]`);
+    function fillSelects() {
+      if (!sheet) return;
+      const cols = sheet.columns;
+      const opts = (list: string[], none = false) => (none ? `<option value="">none</option>` : "") + list.map((c) => `<option value="${c.replace(/"/g, "&quot;")}">${c}</option>`).join("");
+      sel("sampleCol").innerHTML = opts(cols); sel("conditionCol").innerHTML = opts(cols); sel("batchCol").innerHTML = opts(cols, true);
+      // guess: the sample column is the one whose values match the matrix columns; condition = a column with 2–4 distinct values
+      const matchScore = (ci: number) => sheet!.data.filter((r) => matrixCols.includes(r[ci])).length;
+      let best = 0; cols.forEach((_, i) => { if (matchScore(i) > matchScore(best)) best = i; });
+      sel("sampleCol").value = cols[best];
+      const lowered = cols.map((c) => c.toLowerCase());
+      const condGuess = ["condition", "dex", "treatment", "group", "genotype"].map((n) => lowered.indexOf(n)).find((i) => i >= 0);
+      let ci = condGuess ?? -1;
+      if (ci < 0) cols.forEach((_, i) => { const k = new Set(sheet!.data.map((r) => r[i])).size; if (i !== best && k >= 2 && k <= 4 && ci < 0) ci = i; });
+      if (ci >= 0) sel("conditionCol").value = cols[ci];
+      const batchGuess = ["batch", "cell", "donor", "patient", "subject", "individual", "replicate"].map((n) => lowered.indexOf(n)).find((i) => i >= 0);
+      if (batchGuess !== undefined && cols[batchGuess] !== sel("conditionCol").value) sel("batchCol").value = cols[batchGuess];
+      fillLevels();
+    }
+    function fillLevels() {
+      if (!sheet) return;
+      const ci = sheet.columns.indexOf(sel("conditionCol").value);
+      const levels = [...new Set(sheet.data.map((r) => r[ci]).filter(Boolean))];
+      const html = levels.map((l) => `<option value="${l.replace(/"/g, "&quot;")}">${l}</option>`).join("");
+      sel("refLevel").innerHTML = html; sel("trtLevel").innerHTML = html;
+      const low = levels.map((l) => l.toLowerCase());
+      const ref = low.findIndex((l) => /control|ctrl|untr|vehicle|wt|wild|mock|normal|healthy|baseline|dmso/.test(l));
+      sel("refLevel").value = levels[ref >= 0 ? ref : 0]; sel("trtLevel").value = levels[(ref >= 0 ? ref : 0) === 0 ? Math.min(1, levels.length - 1) : 0];
+      const groups = levels.map((l) => sheet!.data.filter((r) => r[ci] === l).length);
+      $<HTMLInputElement>('[data-c="minSamples"]').value = String(Math.max(1, Math.min(...groups)));
+      refresh();
+    }
+    function refresh() {
+      const cond = sel("conditionCol").value || "condition", batch = sel("batchCol").value;
+      $("[data-design]").textContent = batch ? `~ ${batch} + ${cond}` : `~ ${cond}`;
+      const ok = !!countsText && !!sheet && !!sel("refLevel").value && sel("refLevel").value !== sel("trtLevel").value;
+      runBtn.disabled = !ok;
+      if (countsText && sheet) {
+        const sc = sheet.columns.indexOf(sel("sampleCol").value);
+        const missing = sheet.data.map((r) => r[sc]).filter((s) => !matrixCols.includes(s));
+        if (missing.length) { say(`Sample names not found in the matrix columns: ${missing.slice(0, 5).join(", ")}${missing.length > 5 ? "…" : ""}. Choose another sample column or fix the sheet.`, true); runBtn.disabled = true; }
+        else if (lines.length && /not found in the matrix/.test(lines[lines.length - 1])) { lines.pop(); say("Samples match the matrix columns."); }
+      }
+    }
+    for (const which of ["counts", "samples"] as const) {
+      const drop = $<HTMLElement>(`[data-drop="${which}"]`), inp = $<HTMLInputElement>(`[data-file="${which}"]`);
+      const take = async (f: File) => { const t = await readFile(f); which === "counts" ? setCounts(t, f.name) : setSamples(t, f.name); say(`${f.name} loaded.`); };
+      drop.addEventListener("click", () => inp.click()); inp.addEventListener("change", () => inp.files?.[0] && take(inp.files[0]));
+      drop.addEventListener("dragover", (e) => { e.preventDefault(); drop.classList.add("over"); }); drop.addEventListener("dragleave", () => drop.classList.remove("over"));
+      drop.addEventListener("drop", (e) => { e.preventDefault(); drop.classList.remove("over"); const f = e.dataTransfer?.files?.[0]; if (f) take(f); });
+    }
+    ["sampleCol", "batchCol"].forEach((k) => sel(k).addEventListener("change", refresh));
+    sel("conditionCol").addEventListener("change", fillLevels); sel("refLevel").addEventListener("change", refresh); sel("trtLevel").addEventListener("change", refresh);
+
+    // sample sheet handed over from the dataset tool
+    try { const h = sessionStorage.getItem("rr-samples"); if (h) { const p = JSON.parse(h); setSamples(p.csv, p.name); $("[data-sheet-handoff]").textContent = `Sample sheet loaded from the dataset tool (${p.name}).`; } } catch {}
+
+    $("[data-example]").addEventListener("click", async () => {
+      say("Loading the airway example…");
+      const txt = await readBlob(await fetch("/data/airway_counts.csv.gz").then((r) => r.blob()));
+      setCounts(txt.replace(/^""/, '"gene_id"'), "airway_counts.csv");
+      const s = await fetch("/data/airway_samples.csv").then((r) => r.text());
+      const rows = s.trim().split("\n").map((l) => l.split(",").map((x) => x.replace(/"/g, "")));
+      const h = rows[0], iRun = h.indexOf("Run"), iCell = h.indexOf("cell"), iDex = h.indexOf("dex");
+      setSamples(["sample,cell,dex", ...rows.slice(1).map((r) => [r[iRun], r[iCell], r[iDex]].join(","))].join("\n"), "airway_samples.csv");
+      sel("conditionCol").value = "dex"; fillLevels(); sel("refLevel").value = "untrt"; sel("trtLevel").value = "trt"; sel("batchCol").value = "cell"; $<HTMLInputElement>('[data-c="minSamples"]').value = "4"; refresh();
+      say("Airway: 63,677 genes × 8 samples, design ~ cell + dex, dex trt vs untrt. Expected: 4,081 genes at padj < 0.05.");
+    });
+
+    // GEO supplementary files, read from NCBI's FTP mirror (it allows cross-origin reads)
+    const geoDir = (gse: string) => `https://ftp.ncbi.nlm.nih.gov/geo/series/${gse.slice(0, -3)}nnn/${gse}/suppl/`;
+    $("[data-geo-list]").addEventListener("click", async () => {
+      const gse = $<HTMLInputElement>("[data-gse]").value.trim().toUpperCase(), box = $<HTMLElement>("[data-geo-files]");
+      if (!/^GSE\d+$/.test(gse)) { box.textContent = "Enter a GEO series accession like GSE226151."; return; }
+      box.textContent = "Listing…";
+      try {
+        const html = await fetch(geoDir(gse)).then((r) => { if (!r.ok) throw new Error(`NCBI returned ${r.status}`); return r.text(); });
+        const files = [...html.matchAll(/href="([^"\/]+)"/g)].map((m) => m[1]).filter((f) => /\.(txt|csv|tsv|tab)(\.gz)?$/i.test(f));
+        if (!files.length) { box.textContent = "No text tables among the supplementary files (there may be Excel or archive files; see the GEO page)."; return; }
+        box.innerHTML = files.map((f) => `<a href="#" data-geo-file="${f}">${f}</a>`).join("");
+        box.querySelectorAll<HTMLAnchorElement>("[data-geo-file]").forEach((a) => a.addEventListener("click", async (e) => {
+          e.preventDefault(); const f = a.dataset.geoFile!; say(`Fetching ${f} from NCBI…`);
+          try { const b = await fetch(geoDir(gse) + f).then((r) => { if (!r.ok) throw new Error(`NCBI returned ${r.status}`); return r.blob(); }); const t = await readBlob(b); setCounts(t, f); say(`${f} loaded (${(b.size / 1e6).toFixed(1)} MB). Check that the first column is the gene ID and the other columns are raw counts.`); }
+          catch (err: any) { say(`Could not fetch ${f}: ${err.message}`, true); }
+        }));
+      } catch (err: any) { box.textContent = `Could not list ${gse}: ${err.message}`; }
+    });
+    try { const h = sessionStorage.getItem("rr-samples"); if (h) { const p = JSON.parse(h); const m = /GSE\d+/.exec(p.name); if (m) $<HTMLInputElement>("[data-gse]").value = m[0]; } } catch {}
+
+    $("[data-load]").addEventListener("click", () => loadEngine((m, done) => say(m)).catch((e) => say(`Engine failed: ${e.message}`, true)));
+
+    let last: any = null;
+    runBtn.addEventListener("click", async () => {
+      runBtn.disabled = true; $<HTMLElement>("[data-out]").hidden = true;
+      const cfg = { countsCSV: countsText, samplesCSV: samplesText, sampleCol: sel("sampleCol").value, conditionCol: sel("conditionCol").value, refLevel: sel("refLevel").value, trtLevel: sel("trtLevel").value, batchCol: sel("batchCol").value,
+        minCounts: +$<HTMLInputElement>('[data-c="minCounts"]').value || 0, minSamples: +$<HTMLInputElement>('[data-c="minSamples"]').value || 1, alpha: +$<HTMLInputElement>('[data-c="alpha"]').value || 0.05, shrink: $<HTMLInputElement>('[data-c="shrink"]').checked };
+      const t0 = performance.now();
+      try {
+        const r = await runDESeq2(cfg, (m) => say(m));
+        last = r;
+        say(`${r.log}\nDone in ${((performance.now() - t0) / 1000).toFixed(0)} s: ${r.nTested.toLocaleString("en-US")} genes tested, ${r.nUp} up, ${r.nDown} down at padj < ${cfg.alpha}.`);
+        $("[data-stats]").innerHTML = [[r.nGenes, "genes in matrix"], [r.nAfterFilter, "after filter"], [r.nTested, "tested"], [r.nUp, "up"], [r.nDown, "down"]].map(([v, l]) => `<div class="stat"><b>${(v as number).toLocaleString("en-US")}</b><span>${l}</span></div>`).join("");
+        $("[data-versions]").textContent = `DESeq2 ${r.versions.deseq2}${r.versions.apeglm && r.versions.apeglm !== "NA" ? `, apeglm ${r.versions.apeglm}` : ""}, R ${r.versions.r} (webR). Size factors: ${Object.entries(r.sizeFactors).map(([k, v]) => `${k} ${v.toFixed(2)}`).join(", ")}.`;
+        const rows = r.resultsCSV.trim().split("\n").slice(1, 11).map((l) => l.split(","));
+        $("[data-top]").innerHTML = rows.map((c) => `<tr><td><code>${c[0]}</code></td><td class="num">${(+c[1]).toFixed(1)}</td><td class="num">${(+c[2]).toFixed(2)}</td><td class="num">${(+c[5]).toExponential(1)}</td><td class="num">${(+c[6]).toExponential(1)}</td></tr>`).join("");
+        try { sessionStorage.setItem("rr-results", JSON.stringify({ name: `deseq2_results_${cfg.trtLevel}_vs_${cfg.refLevel}.csv`, text: r.resultsCSV })); } catch {}
+        $<HTMLElement>("[data-out]").hidden = false;
+        (window as any).__run = r;
+      } catch (e: any) { say(`DESeq2 stopped: ${e.message}`, true); }
+      runBtn.disabled = false;
+    });
+    document.querySelectorAll<HTMLButtonElement>("[data-dl]").forEach((b) => b.addEventListener("click", () => {
+      if (!last) return;
+      const text = b.dataset.dl === "results" ? last.resultsCSV : last.log + "\n";
+      const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([text], { type: "text/plain" })); a.download = b.dataset.dl === "results" ? "deseq2_results.csv" : "deseq2_run_log.txt"; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+    }));
+  </script>
+</Base>

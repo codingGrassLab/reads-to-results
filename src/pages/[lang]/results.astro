@@ -312,6 +312,8 @@ const description = "Upload a DESeq2, edgeR or limma results table, set your thr
       try { sessionStorage.setItem("rr-enrich", JSON.stringify(payload)); } catch {}
     });
     $("[data-copytext]").addEventListener("click", async (e) => { try { await navigator.clipboard.writeText($<HTMLElement>("[data-papertext]").innerText); flash(e.currentTarget as HTMLElement, "Copied"); } catch {} });
+    // results handed over from the in-browser DESeq2 run (after everything above is initialised)
+    try { const h = sessionStorage.getItem("rr-results"); if (h) { const p = JSON.parse(h); sessionStorage.removeItem("rr-results"); loadText(p.text, p.name); } } catch {}
     (window as any).__rt = { get rows() { return rows; }, figureSVG, figOpts, thr, loadText, xlsx, classify, zipFiles };
   </script>
 </Base>

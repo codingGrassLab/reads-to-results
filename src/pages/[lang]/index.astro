@@ -34,28 +34,33 @@ const read = await lessons("read", lang);
           <h3>Find a dataset</h3>
           <p>Search GEO by topic, organism and date, or type a GEO, SRA or BioProject accession. See every run with its metadata, reads and file size; build and download the sample sheet; get the FASTQ download scripts (SRA Toolkit, bash and PowerShell) and the fastp + Salmon quantification script.</p>
         </a>
-        <a class="card" href={path(lang, "results")}>
+        <a class="card" href={path(lang, "run")}>
           <span class="n">02</span>
+          <h3>Run DESeq2 in your browser</h3>
+          <p>Real DESeq2 (R compiled to WebAssembly) inside the page: count matrix + sample sheet in, results table out, no upload, no install. Reproduces the site's airway analysis exactly. The first run downloads R and DESeq2 once (about 60–90 MB).</p>
+        </a>
+        <a class="card" href={path(lang, "results")}>
+          <span class="n">03</span>
           <h3>Explore your results</h3>
           <p>Upload a results table, choose thresholds, and get: significant genes as CSV and Excel, volcano and MA plots as SVG and 300-dpi PNG at journal widths, figure legends, and a ZIP with everything plus an HTML report and the settings. Ensembl IDs are mapped to symbols automatically.</p>
         </a>
         <a class="card" href={path(lang, "enrich")}>
-          <span class="n">03</span>
+          <span class="n">04</span>
           <h3>Enrichment</h3>
           <p>GO, KEGG, Reactome and WikiPathways enrichment of your up- and down-regulated genes, with the genes you tested as the statistical background, through the g:Profiler service. Table with fold enrichment, a journal-size dot plot, CSV and a ready legend.</p>
         </a>
         <a class="card" href={path(lang, "hub")}>
-          <span class="n">04</span>
+          <span class="n">05</span>
           <h3>Hub genes</h3>
           <p>Upload the STRING network of your DEGs, rank nodes with the twelve cytoHubba scores (MCC, Degree, Betweenness…), choose the top N, and download the hub table, the network figure and SIF/attribute files that open in Cytoscape. Scores checked against networkx.</p>
         </a>
         <a class="card" href={path(lang, "methods")}>
-          <span class="n">05</span>
+          <span class="n">06</span>
           <h3>Methods writer</h3>
           <p>Enter the tools, versions and settings you used (fastp, Salmon, tximport, DESeq2, apeglm, clusterProfiler) and get a methods paragraph with numbered, verified citations, plus a BibTeX file.</p>
         </a>
         <div class="card soon">
-          <span class="n">06</span>
+          <span class="n">07</span>
           <h3>More tools</h3>
           <p>Sensitivity analysis and multi-cohort comparison are next. The list grows as the author's own analyses need them.</p>
         </div>
