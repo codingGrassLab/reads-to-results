@@ -18,8 +18,10 @@ const symbolNames = ["symbol", "gene_symbol", "gene_name", "genename", "hgnc_sym
 export function detectDelimiter(text: string): string {
   const head = text.slice(0, 5000).split(/\r?\n/).slice(0, 5);
   const score = (d: string) => head.map((l) => l.split(d).length).reduce((a, b) => a + b, 0);
-  const cands = ["\t", ",", ";"];
-  return cands.sort((a, b) => score(b) - score(a))[0];
+  // tabs and semicolons are unambiguous; commas can also be decimal separators, so they are the fallback
+  if (score("\t") > head.length * 1.5) return "\t";
+  if (score(";") > head.length * 1.5) return ";";
+  return ",";
 }
 
 /** Minimal CSV parsing with quoted fields. */
@@ -61,7 +63,8 @@ export function autoMap(columns: string[]): { mapping: Mapping; format: string }
 export function toRows(columns: string[], data: string[][], m: Mapping): { rows: Row[]; nDropped: number } {
   const ix = (c: string) => columns.indexOf(c);
   const iId = ix(m.id), iSym = m.symbol ? ix(m.symbol) : -1, iMean = m.mean ? ix(m.mean) : -1, iLfc = ix(m.lfc), iP = m.p ? ix(m.p) : -1, iPadj = ix(m.padj);
-  const num = (s: string | undefined) => { if (s === undefined || s === "" || s === "NA" || s === "NaN" || s === "null") return NaN; const v = Number(s); return Number.isFinite(v) ? v : NaN; };
+  // decimal commas (write.csv2, European Excel): "495,567" with no dot is read as 495.567
+  const num = (s: string | undefined) => { if (s === undefined || s === "" || s === "NA" || s === "NaN" || s === "null") return NaN; let t = s.trim(); if (/^-?\d+,\d+(e[+-]?\d+)?$/i.test(t)) t = t.replace(",", "."); const v = Number(t); return Number.isFinite(v) ? v : NaN; };
   const rows: Row[] = []; let nDropped = 0;
   for (const r of data) {
     const lfc = num(r[iLfc]), padj = num(r[iPadj]);

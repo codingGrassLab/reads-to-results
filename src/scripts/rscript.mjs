@@ -118,8 +118,10 @@ export function buildScript(c) {
     `# ---- Results: ${c.trtLevel} versus ${c.refLevel} -------------------------------`,
     `res <- results(dds, contrast = c(${rstr(c.conditionCol)}, ${rstr(c.trtLevel)}, ${rstr(c.refLevel)}), alpha = ${c.alpha})`,
     `summary(res)`,
-    `res$symbol <- AnnotationDbi::mapIds(${orgdb}, sub("\\\\..*$", "", rownames(res)), "SYMBOL", "ENSEMBL", multiVals = "first")`,
-    `# If your IDs are not Ensembl, change "ENSEMBL" above to the matching key type, e.g. "ENTREZID" or "SYMBOL".`);
+    `# Gene symbols from Ensembl IDs. If your IDs are not Ensembl, change "ENSEMBL" to the matching key type`,
+    `# (e.g. "ENTREZID"); if they are already symbols, this step simply leaves the symbol column empty.`,
+    `res$symbol <- tryCatch(AnnotationDbi::mapIds(${orgdb}, sub("\\\\..*$", "", rownames(res)), "SYMBOL", "ENSEMBL", multiVals = "first"),`,
+    `                       error = function(e) { message("Symbols not added: the gene IDs are not Ensembl IDs of this organism."); NA_character_ })`);
   if (c.shrink !== "none") {
     p(``, `# Shrunken fold changes, for ranking and plots (the test itself is unchanged)`,
       c.shrink === "apeglm" ? `resLFC <- lfcShrink(dds, coef = ${rstr(coefName)}, type = "apeglm")` : `resLFC <- lfcShrink(dds, contrast = c(${rstr(c.conditionCol)}, ${rstr(c.trtLevel)}, ${rstr(c.refLevel)}), type = "ashr")`,
@@ -197,9 +199,10 @@ export function buildScript(c) {
     `# Over-representation of the significant genes against all tested genes as background.`,
     `sig_ids <- sub("\\\\..*$", "", rownames(res)[which(res$padj < ${c.alpha} & abs(res$log2FoldChange) > ${c.lfc})])`,
     `universe <- sub("\\\\..*$", "", rownames(res)[!is.na(res$padj)])`,
-    `ego <- enrichGO(gene = sig_ids, universe = universe, OrgDb = ${orgdb}, keyType = "ENSEMBL", ont = "BP",`,
-    `                pAdjustMethod = "BH", qvalueCutoff = 0.05, readable = TRUE)`,
-    `ego_df <- as.data.frame(ego)`,
+    `ego <- tryCatch(enrichGO(gene = sig_ids, universe = universe, OrgDb = ${orgdb}, keyType = "ENSEMBL", ont = "BP",`,
+    `                         pAdjustMethod = "BH", qvalueCutoff = 0.05, readable = TRUE),`,
+    `                error = function(e) { message("GO enrichment skipped: ", conditionMessage(e)); NULL })`,
+    `ego_df <- if (is.null(ego)) data.frame() else as.data.frame(ego)`,
     `write.csv(ego_df, out("go_bp_enrichment.csv"), row.names = FALSE)`,
     `cat("Enriched GO BP terms:", nrow(ego_df), "\\n")`,
     `if (nrow(ego_df) > 0) { g <- dotplot(ego, showCategory = 15); ggsave(out("go_dotplot.png"), g, width = 8, height = 7, dpi = 300) }`,
