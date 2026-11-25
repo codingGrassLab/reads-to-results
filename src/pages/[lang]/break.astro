@@ -76,13 +76,13 @@ const samples = [
     .bk-s { border-radius: 6px; padding: 0.35rem 0.2rem; text-align: center; font-size: 0.72rem; line-height: 1.2; border: 2px solid transparent; transition: all 0.2s; }
     .bk-s b { display: block; font-size: 0.8rem; }
     .bk-s span { color: inherit; opacity: 0.8; }
-    .bk-s[data-dex="untrt"] { background: #e8eef7; color: #2c5fa8; }
-    .bk-s[data-dex="trt"] { background: #f8e6e3; color: #c0392b; }
+    .bk-s[data-dex="untrt"] { background: #f6ebe0; color: #b86b1f; }
+    .bk-s[data-dex="trt"] { background: #e1efee; color: #0f6e6a; }
     .bk-s.off { background: var(--bg-2) !important; color: var(--dim) !important; text-decoration: line-through; opacity: 0.5; }
     .bk-s.swap { border-color: var(--warn); }
     .bk-legend { margin-top: 0.5rem; }
     .sw { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin: 0 0.25rem 0 0.6rem; vertical-align: middle; }
-    .sw.u { background: #e8eef7; } .sw.t { background: #f8e6e3; } .sw.x { background: var(--bg-2); } .sw.s { border: 2px solid var(--warn); }
+    .sw.u { background: #f6ebe0; } .sw.t { background: #e1efee; } .sw.x { background: var(--bg-2); } .sw.s { border: 2px solid var(--warn); }
     .bk-big { display: flex; align-items: baseline; gap: 0.8rem; flex-wrap: wrap; }
     .bk-big b { font-family: var(--f-display); font-size: 3.6rem; font-weight: 500; color: var(--ink); line-height: 1; font-variant-numeric: tabular-nums; }
     .bk-big > span { color: var(--muted); }
@@ -136,8 +136,8 @@ const samples = [
         el.classList.toggle("swap", sw);
         const dex = sw ? (el.dataset.dex === "trt" ? "untrt" : "trt") : el.dataset.dex!;
         el.querySelector("b")!.textContent = dex === "trt" ? "dex" : "untr";
-        el.style.background = removed[s].includes(r) ? "" : dex === "trt" ? "#f8e6e3" : "#e8eef7";
-        el.style.color = removed[s].includes(r) ? "" : dex === "trt" ? "#c0392b" : "#2c5fa8";
+        el.style.background = removed[s].includes(r) ? "" : dex === "trt" ? "#e1efee" : "#f6ebe0";
+        el.style.color = removed[s].includes(r) ? "" : dex === "trt" ? "#0f6e6a" : "#b86b1f";
       });
     }
     document.querySelectorAll('input[name="design"], input[name="samples"]').forEach((i) => i.addEventListener("change", show));

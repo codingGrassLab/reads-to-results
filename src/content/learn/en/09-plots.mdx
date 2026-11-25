@@ -6,7 +6,11 @@ minutes: 20
 ---
 import pca from "../../../data/pca.json";
 import summary from "../../../data/summary.json";
-import Figure from "../../../components/Figure.astro";
+import PCAPlot from "../../../components/PCAPlot.astro";
+import DistanceMatrix from "../../../components/DistanceMatrix.astro";
+import VolcanoPlot from "../../../components/VolcanoPlot.astro";
+import Heatmap from "../../../components/Heatmap.astro";
+import GeneCounts from "../../../components/GeneCounts.astro";
 
 ## Plots before statistics: PCA
 
@@ -17,9 +21,7 @@ vsd <- vst(dds, blind = FALSE)
 plotPCA(vsd, intgroup = c("dex", "cell"))
 ```
 
-<Figure src="/plots/pca.png" alt="PCA of the eight airway samples: treated and untreated separate along PC1, cell lines spread along PC2">
-PC1 ({pca.percentVar[0]}% of variance) separates dexamethasone from untreated; PC2 ({pca.percentVar[1]}%) separates donors. Colour: treatment; shape: cell line.
-</Figure>
+<PCAPlot lang="en">PC1 ({pca.percentVar[0]}% of variance) separates dexamethasone from untreated; PC2 ({pca.percentVar[1]}%) separates donors. Colour: treatment; shape: cell line.</PCAPlot>
 
 Read it as a check on the experiment:
 
@@ -37,9 +39,7 @@ d <- dist(t(assay(vsd)))
 pheatmap(as.matrix(d), clustering_distance_rows = d, clustering_distance_cols = d)
 ```
 
-<Figure src="/plots/sample-distances.png" alt="Heatmap of Euclidean distances between the eight samples">
-Samples cluster first by treatment, then by donor. Interactive version: <a href="../../read/pca/">PCA page</a>.
-</Figure>
+<DistanceMatrix lang="en">Euclidean distance between every pair of samples on the transformed data; dark is similar. Samples group first by treatment, then by donor.</DistanceMatrix>
 
 ## Volcano plot
 
@@ -51,9 +51,7 @@ EnhancedVolcano(res, lab = res$symbol, x = "log2FoldChange", y = "padj",
                 pCutoff = 0.05, FCcutoff = 1)
 ```
 
-<Figure src="/plots/volcano.png" alt="Volcano plot of the airway results">
-{summary.genes_tested.toLocaleString("en-US")} genes. Red: adjusted p below 0.05 and more than two-fold change ({summary.sig_005_lfc1} genes). <a href="../../read/volcano/">Interactive version with adjustable thresholds</a>.
-</Figure>
+<VolcanoPlot lang="en">All {summary.genes_tested.toLocaleString("en-US")} tested genes. Red and blue: adjusted p below 0.05 and at least two-fold change ({summary.sig_005_lfc1} genes). Move the thresholds to see how the counts change.</VolcanoPlot>
 
 The shape is typical and informative. The plot is roughly symmetric, so the drug turns genes off about as often as on. The strongest genes (SPARCL1, DUSP1, PER1, KLF15) are in the upper corners: large change *and* strong evidence. Genes far right but low down are large changes with poor evidence: low-count genes, exactly the ones shrinkage pulls in.
 
@@ -66,12 +64,9 @@ plotMA(res, ylim = c(-5, 5))      # unshrunken
 plotMA(resLFC, ylim = c(-5, 5))   # apeglm-shrunken
 ```
 
-<div class="two">
-<Figure src="/plots/ma.png" alt="MA plot with unshrunken fold changes">Unshrunken: a fan of large fold changes at the left, where counts are low.</Figure>
-<Figure src="/plots/ma-shrunk.png" alt="MA plot with apeglm-shrunken fold changes">Shrunken with apeglm: the fan collapses; well-measured genes are untouched.</Figure>
-</div>
+<VolcanoPlot lang="en" mode="ma">Unshrunken, there is a fan of large fold changes at the left, where counts are low. Tick the box to switch to apeglm-shrunken fold changes: the fan collapses, and well-measured genes are untouched.</VolcanoPlot>
 
-Blue points are significant at the alpha you passed to `results()`. The [MA plot page](../../read/ma-plot/) lets you switch between the two on the same data.
+Coloured points pass both thresholds. The [MA plot page](../../read/ma-plot/) explains how to read it.
 
 ## Heatmap of top genes
 
@@ -85,9 +80,7 @@ ann <- as.data.frame(colData(vsd)[, c("dex", "cell")])
 pheatmap(mat, annotation_col = ann, scale = "row")
 ```
 
-<Figure src="/plots/heatmap.png" alt="Heatmap of the 25 most variable genes across the eight samples">
-Rows are z-scores per gene, so colour means "above or below this gene's own average", not absolute expression. <a href="../../read/heatmap/">Interactive version</a>.
-</Figure>
+<Heatmap lang="en">The 25 most variable genes. Rows are z-scores per gene, so colour means "above or below this gene's own average", not absolute expression.</Heatmap>
 
 Two things to notice. The treated samples cluster together, as expected. And several of the most *variable* genes vary by **donor**, not by treatment: they form blocks that follow the cell-line annotation. "Most variable" is not "most differentially expressed". If you want the heatmap to show the treatment response, select genes by `padj` instead.
 
@@ -99,9 +92,7 @@ For the genes you will discuss in the text, show the actual counts:
 plotCounts(dds, gene = "ENSG00000103196", intgroup = c("dex", "cell"))
 ```
 
-<Figure src="/plots/gene-counts.png" alt="Normalized counts of CRISPLD2 in the eight samples, lines connecting each donor's pair">
-CRISPLD2: each line joins the untreated and treated sample of one donor. All four rise. Interactive version on the <a href="../../read/log2-fold-change/">fold-change page</a>.
-</Figure>
+<GeneCounts lang="en">CRISPLD2: each line joins the untreated and treated sample of one donor. All four rise.</GeneCounts>
 
 This is the plot that convinces a reviewer, because it shows the replicates. A fold change and a p-value hide whether the effect is consistent or driven by one sample.
 

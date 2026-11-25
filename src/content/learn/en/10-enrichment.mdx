@@ -6,7 +6,7 @@ minutes: 20
 ---
 import go from "../../../data/go.json";
 import summary from "../../../data/summary.json";
-import Figure from "../../../components/Figure.astro";
+import GoDotPlot from "../../../components/GoDotPlot.astro";
 
 ## The question
 
@@ -40,9 +40,9 @@ With these settings, {go.n_terms} GO terms are significant. The top of the table
 </table>
 </div>
 
-<Figure src="/plots/go-dotplot.png" alt="Dot plot of the top enriched GO biological-process terms">
-Dot size: number of changed genes in the term. Colour: adjusted p. `GeneRatio` is changed genes in the term over all changed genes with a GO annotation ({go.terms[0].geneRatio.split("/")[1]} of {go.n_genes} here).
-</Figure>
+<GoDotPlot>
+The 15 strongest terms. Dot size: number of changed genes in the term. Colour: adjusted p (darker is stronger). Hover or tap a row for the genes behind the term. `GeneRatio` is changed genes in the term over all changed genes with a GO annotation ({go.terms[0].geneRatio.split("/")[1]} of {go.n_genes} here).
+</GoDotPlot>
 
 ## Reading this honestly
 

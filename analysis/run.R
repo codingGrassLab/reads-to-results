@@ -191,21 +191,9 @@ go_json <- list(
   ))
 )
 
-# ── 7. Static plots for the lessons ─────────────────────────────────────────
-png_("pca.png"); print(ggplot(pca, aes(PC1, PC2, color = dex, shape = cell)) + geom_point(size = 4) +
-  xlab(paste0("PC1: ", pv[1], "% variance")) + ylab(paste0("PC2: ", pv[2], "% variance")) + coord_fixed() + theme_bw(base_size = 14)); dev.off()
-
-colors <- colorRampPalette(rev(brewer.pal(9, "Blues")))(255)
-ann <- data.frame(dex = colData(vsd)$dex, cell = colData(vsd)$cell, row.names = colnames(vsd))
-png_("sample-distances.png"); pheatmap(dist_mat, clustering_distance_rows = sampleDists, clustering_distance_cols = sampleDists, col = colors, annotation_col = ann); dev.off()
-png_("heatmap.png", 1600, 1800); pheatmap(mat_z, annotation_col = ann, labels_row = heatmap_json$symbols, fontsize_row = 9); dev.off()
-png_("ma.png"); plotMA(res, ylim = c(-5, 5), alpha = 0.05, main = "MA plot (unshrunken)"); dev.off()
-png_("ma-shrunk.png"); plotMA(resLFC, ylim = c(-5, 5), alpha = 0.05, main = "MA plot (apeglm shrinkage)"); dev.off()
+# ── 7. The volcano image used as the page preview (og:image) ─────────────────────────────────────────
 png_("volcano.png", 1800, 1600); print(EnhancedVolcano(tab, lab = tab$symbol, x = "log2FoldChange", y = "padj", pCutoff = 0.05, FCcutoff = 1,
   title = "Dexamethasone vs untreated", subtitle = "airway, DESeq2", ylab = bquote(~-Log[10]~ "adjusted p"), labSize = 3.5, pointSize = 1.5, legendPosition = "bottom")); dev.off()
-png_("gene-counts.png", 1400, 1100); print(ggplot(cnt, aes(dex, count, color = cell, group = cell)) + geom_point(size = 3.5) + geom_line() +
-  scale_y_log10() + ggtitle("CRISPLD2, normalized counts") + theme_bw(base_size = 14)); dev.off()
-if (nrow(ego_df) > 0) { png_("go-dotplot.png", 1800, 1600); print(dotplot(ego, showCategory = 15) + theme(axis.text.y = element_text(size = 10))); dev.off() }
 
 # ── 8. Write everything ─────────────────────────────────────────────────────
 wj(samples, "samples.json"); wj(read_examples, "reads.json")

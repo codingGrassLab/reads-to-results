@@ -1,0 +1,89 @@
+---
+// Enrichment dot plot drawn from src/data/go.json (the top GO biological-process terms of the
+// airway analysis). x: gene ratio; dot size: changed genes in the term; colour: adjusted p.
+// Hover or tap a dot (or its row) for the genes behind the term.
+import go from "../data/go.json";
+const N = 15;
+const terms = go.terms.slice(0, N).map((t) => { const [k, n] = t.geneRatio.split("/").map(Number); return { ...t, ratio: k / n }; });
+const W = 720, L = 300, R = 120, T = 14, rowH = 26, B = 46, H = T + terms.length * rowH + B;
+const xMax = Math.ceil(Math.max(...terms.map((t) => t.ratio)) * 100 / 2) * 2 / 100;
+const sx = (v: number) => L + (v / xMax) * (W - L - R);
+const cMin = Math.min(...terms.map((t) => t.count)), cMax = Math.max(...terms.map((t) => t.count));
+const rad = (c: number) => 4 + 9 * Math.sqrt((c - cMin) / (cMax - cMin || 1));
+const lp = terms.map((t) => -Math.log10(t.padj)), lMin = Math.min(...lp), lMax = Math.max(...lp);
+// teal sequential: lighter = weaker evidence
+const col = (v: number) => { const t = (v - lMin) / (lMax - lMin || 1); const a = [180, 216, 212], b = [10, 85, 83]; return `rgb(${a.map((x, i) => Math.round(x + (b[i] - x) * t)).join(",")})`; };
+const ticks = Array.from({ length: Math.round(xMax / 0.01) + 1 }, (_, i) => +(i * 0.01).toFixed(2)).filter((v, i, a) => a.length <= 7 || i % 2 === 0);
+const short = (s: string) => (s.length > 44 ? s.slice(0, 42) + "…" : s);
+---
+<figure class="gd" data-gd>
+  <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label={`Dot plot of the top ${N} enriched GO biological-process terms`}>
+    {ticks.map((v) => <g><line x1={sx(v)} x2={sx(v)} y1={T} y2={H - B} class="grid" /><text x={sx(v)} y={H - B + 16} text-anchor="middle" class="tick">{v}</text></g>)}
+    <text x={(L + W - R) / 2} y={H - 8} text-anchor="middle" class="lab">gene ratio (changed genes in the term / changed genes with a GO annotation)</text>
+    {terms.map((t, i) => {
+      const y = T + i * rowH + rowH / 2;
+      return (
+        <g class="row" data-i={i} tabindex="0">
+          <rect x="0" y={y - rowH / 2} width={W - R + 10} height={rowH} class="hit" />
+          <text x={L - 12} y={y + 4} text-anchor="end" class="term">{short(t.description)}</text>
+          <line x1={L} x2={sx(t.ratio)} y1={y} y2={y} class="stem" />
+          <circle cx={sx(t.ratio)} cy={y} r={rad(t.count)} fill={col(-Math.log10(t.padj))} class="dot" />
+        </g>
+      );
+    })}
+    <g transform={`translate(${W - R + 22},${T + 4})`}>
+      <text class="lt">genes</text>
+      {[cMin, Math.round((cMin + cMax) / 2), cMax].map((c, k) => <g transform={`translate(10,${22 + k * 26})`}><circle r={rad(c)} class="lc" /><text x="20" y="4" class="tick">{c}</text></g>)}
+      <text y="112" class="lt">adjusted p</text>
+      {[lMax, (lMin + lMax) / 2, lMin].map((v, k) => <g transform={`translate(10,${128 + k * 20})`}><circle r="6" fill={col(v)} /><text x="20" y="4" class="tick">{Math.pow(10, -v).toExponential(0)}</text></g>)}
+    </g>
+  </svg>
+  <div class="gd-tip" data-gd-tip hidden></div>
+  <script type="application/json" data-gd-data set:html={JSON.stringify(terms.map((t) => ({ id: t.id, d: t.description, r: t.geneRatio, bg: t.bgRatio, p: t.padj, g: t.genes })))}></script>
+  <figcaption><slot /></figcaption>
+</figure>
+
+<style>
+  .gd { position: relative; margin: 1.6em 0; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 0.6rem 0.6rem 0.4rem; }
+  .gd svg { display: block; width: 100%; height: auto; font-family: Inter, system-ui, sans-serif; }
+  .gd .grid { stroke: #e6e9e7; }
+  .gd .tick { font-size: 11px; fill: #6b7673; }
+  .gd .lab, .gd .lt { font-size: 11.5px; fill: #2d3836; }
+  .gd .lt { font-weight: 600; }
+  .gd .term { font-size: 12.5px; fill: #15201f; }
+  .gd .stem { stroke: #c9cec8; stroke-width: 1.2; }
+  .gd .dot { stroke: #fff; stroke-width: 1.2; transition: r 0.15s; }
+  .gd .lc { fill: none; stroke: #6b7673; }
+  .gd .hit { fill: transparent; }
+  .gd .row { cursor: pointer; outline: none; }
+  .gd .row:hover .hit, .gd .row:focus .hit, .gd .row.on .hit { fill: var(--accent-soft); }
+  .gd .row:hover .term, .gd .row.on .term { font-weight: 600; }
+  .gd-tip { position: absolute; z-index: 2; max-width: 22rem; background: var(--ink); color: #fff; font-size: 0.78rem; line-height: 1.45; padding: 0.55rem 0.7rem; border-radius: 8px; box-shadow: 0 6px 18px rgba(0,0,0,0.18); pointer-events: none; }
+  .gd-tip b { font-size: 0.85rem; }
+  .gd-tip .dim { opacity: 0.75; }
+  .gd figcaption { font-size: 0.88rem; color: var(--muted); margin: 0.3rem 0.4rem 0.2rem; }
+</style>
+
+<script>
+  for (const fig of document.querySelectorAll<HTMLElement>("[data-gd]")) {
+    const data = JSON.parse(fig.querySelector("[data-gd-data]")!.textContent!);
+    const tip = fig.querySelector<HTMLElement>("[data-gd-tip]")!;
+    const show = (row: SVGGElement | null) => {
+      fig.querySelectorAll(".row.on").forEach((r) => r.classList.remove("on"));
+      if (!row) { tip.hidden = true; return; }
+      row.classList.add("on");
+      const t = data[+row.dataset.i!];
+      tip.innerHTML = `<b>${t.d}</b> <span class="dim">${t.id}</span><br>${t.r.split("/")[0]} changed genes (background ${t.bg}) · adjusted p ${t.p.toExponential(1)}<br><span class="dim">${t.g.slice(0, 18).join(", ")}${t.g.length > 18 ? ` … +${t.g.length - 18}` : ""}</span>`;
+      const fr = fig.getBoundingClientRect(), rr = row.getBoundingClientRect();
+      tip.hidden = false;
+      tip.style.left = `${Math.max(8, Math.min(fr.width - tip.offsetWidth - 8, rr.left - fr.left + fr.width * 0.42))}px`;
+      tip.style.top = `${rr.bottom - fr.top + 4}px`;
+    };
+    fig.querySelectorAll<SVGGElement>(".row").forEach((row) => {
+      row.addEventListener("pointerenter", () => show(row));
+      row.addEventListener("focus", () => show(row));
+      row.addEventListener("click", () => show(row));
+    });
+    fig.querySelector("svg")!.addEventListener("pointerleave", () => show(null));
+  }
+</script>
