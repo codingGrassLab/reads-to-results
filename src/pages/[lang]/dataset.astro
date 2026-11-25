@@ -73,16 +73,16 @@ const organisms: [string, string][] = [["", "any organism"], ["Homo sapiens", "h
     .ds-findform input:not([type="checkbox"]), .ds-findform select { padding: 0.5rem 0.7rem; font: inherit; font-size: 0.95rem; border: 1px solid var(--line-strong); border-radius: 8px; background: var(--bg); color: var(--ink); }
     .ds-findform label.chk { flex-direction: row; align-items: center; gap: 0.4rem; }
     .ds-results { display: grid; gap: 0.8rem; margin-top: 1rem; }
-    .ds-card { border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 0.9rem 1.1rem; background: var(--bg); }
-    .ds-card h3 { margin: 0.2rem 0 0.3rem; font-size: 1.05rem; font-family: var(--f-body); font-weight: 600; }
-    .ds-card .meta { font-size: 0.85rem; color: var(--muted); display: flex; flex-wrap: wrap; gap: 0.3rem 1rem; }
-    .ds-card .sum { font-size: 0.88rem; color: var(--text); margin: 0.5rem 0; }
-    .ds-card .samples { font-size: 0.8rem; color: var(--dim); }
-    .badge { display: inline-block; font-size: 0.72rem; padding: 0.1rem 0.5rem; border-radius: 999px; border: 1px solid var(--line-strong); color: var(--muted); margin-right: 0.3rem; }
-    .badge.ok { border-color: var(--accent); color: var(--accent); }
-    .badge.sc { border-color: var(--warn); color: var(--warn); }
-    .ds-card .acts { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 0.6rem; align-items: center; }
-    .ds-card .acts .btn { padding: 0.35rem 0.8rem; font-size: 0.85rem; }
+    :global(.ds-card) { border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 0.9rem 1.1rem; background: var(--bg); }
+    :global(.ds-card h3) { margin: 0.2rem 0 0.3rem; font-size: 1.05rem; font-family: var(--f-body); font-weight: 600; }
+    :global(.ds-card .meta) { font-size: 0.85rem; color: var(--muted); display: flex; flex-wrap: wrap; gap: 0.3rem 1rem; }
+    :global(.ds-card .sum) { font-size: 0.88rem; color: var(--text); margin: 0.5rem 0; }
+    :global(.ds-card .samples) { font-size: 0.8rem; color: var(--dim); }
+    :global(.badge) { display: inline-block; font-size: 0.72rem; padding: 0.1rem 0.5rem; border-radius: 999px; border: 1px solid var(--line-strong); color: var(--muted); margin-right: 0.3rem; }
+    :global(.badge.ok) { border-color: var(--accent); color: var(--accent); }
+    :global(.badge.sc) { border-color: var(--warn); color: var(--warn); }
+    :global(.ds-card .acts) { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 0.6rem; align-items: center; }
+    :global(.ds-card .acts .btn) { padding: 0.35rem 0.8rem; font-size: 0.85rem; }
     .ds-pager { display: flex; gap: 1rem; align-items: center; margin-top: 1rem; }
     .ds-search { display: flex; gap: 0.6rem; flex-wrap: wrap; align-items: center; margin: 0.5rem 0; }
     .ds-search input { flex: 1 1 320px; padding: 0.65rem 0.9rem; font: inherit; font-size: 1.05rem; border: 1px solid var(--line-strong); border-radius: 999px; background: var(--surface); color: var(--ink); font-family: var(--f-mono); }
@@ -99,10 +99,27 @@ const organisms: [string, string][] = [["", "any organism"], ["Homo sapiens", "h
     .ds-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; margin: 1.2rem 0; align-items: center; }
     .ds-preview pre { max-height: 40vh; overflow: auto; font-size: 0.78rem; }
     .btn.flash { background: var(--accent); color: #fff; }
+    :global(.av) { display: flex; gap: 0.6rem; align-items: flex-start; margin: 0.6rem 0 0.2rem; padding: 0.5rem 0.75rem; border-radius: var(--radius-sm); font-size: 0.82rem; line-height: 1.45; color: var(--text); border: 1px solid; }
+    :global(.av b) { color: var(--ink); }
+    :global(.av-i) { font-size: 1rem; line-height: 1.2; }
+    :global(.av-ok) { border-color: var(--accent); background: var(--accent-soft); } :global(.av-ok .av-i) { color: var(--accent); }
+    :global(.av-warn) { border-color: var(--warn); background: var(--warn-soft); } :global(.av-warn .av-i) { color: var(--warn); }
+    :global(.av-none) { border-color: var(--up); background: rgba(192, 57, 43, 0.07); } :global(.av-none .av-i) { color: var(--up); }
+    :global(.av .warn) { color: var(--warn); }
   </style>
 
   <script>
     import { markDone } from "../../scripts/flow";
+    import { availability, type Availability } from "../../scripts/geo";
+    const availCache = new Map<string, Promise<Availability>>();
+    const avail = (acc: string) => { if (!availCache.has(acc)) availCache.set(acc, availability(acc)); return availCache.get(acc)!; };
+    const availHTML = (a: Availability) => `<div class="av av-${a.level}"><span class="av-i">${a.level === "ok" ? "✓" : "⚠"}</span><div><b>${a.level === "ok" ? "Ready to run here" : a.level === "warn" ? "Might not run directly" : "No count table on GEO"}</b><br><span>${esc(a.counts)}</span><br><span class="${a.metaOk ? "" : "warn"}">${esc(a.meta)}</span></div></div>`;
+    async function fillAvail(root: ParentNode) {
+      const els = [...root.querySelectorAll<HTMLElement>("[data-avail]")];
+      let i = 0;
+      const worker = async () => { while (i < els.length) { const el = els[i++]; try { const a = await avail(el.dataset.avail!); el.innerHTML = availHTML(a); const btn = el.closest(".ds-card")?.querySelector<HTMLElement>("[data-runnow]"); if (btn && a.level !== "ok") { btn.classList.replace("btn-primary", "btn-ghost"); if (a.level === "none") btn.textContent = "Run DESeq2 (bring your own counts) →"; } } catch { el.textContent = "Could not check the GEO files."; } } };
+      await Promise.all([worker(), worker(), worker(), worker()]);
+    }
     type Run = { srp?: string; prj?: string; run: string; sample: string; alias: string; title: string; layout: string; strategy: string; instrument: string; reads: number; bases: number; fastq: string[]; bytes: number[]; md5: string[]; organism: string; on: boolean; name: string; condition: string; batch: string; tech: boolean };
     const $ = <T extends Element>(s: string) => document.querySelector<T>(s)!;
     const form = $<HTMLFormElement>("[data-form]"), status = $<HTMLElement>("[data-status]"), result = $<HTMLElement>("[data-result]");
@@ -177,6 +194,7 @@ const organisms: [string, string][] = [["", "any organism"], ["Homo sapiens", "h
         study = { acc, title: bp.title, srp: (runs[0] as any).srp || geo?.srp || (/^[SED]RP/.test(acc) ? acc : ""), prj, geo: geo?.accession || (geo ? acc : ""), summary: bp.summary };
         guessConditions();
         render();
+        if (study.geo) { const box = document.createElement("div"); box.dataset.avail = study.geo; box.className = "small muted"; box.textContent = "Checking the GEO files…"; $("[data-study]").append(box); fillAvail($("[data-study]")); }
         const rl = $<HTMLAnchorElement>("[data-run-link]");
         rl.href = study.geo ? `../run/?gse=${study.geo}` : "../run/";
         try { if (runs[0]?.organism) sessionStorage.setItem("rr-organism", runs[0].organism); } catch {}
@@ -308,8 +326,10 @@ const organisms: [string, string][] = [["", "any organism"], ["Homo sapiens", "h
           <div>${r.counts ? `<span class="badge ok">NCBI count matrix</span>` : ""}${r.sra ? `<span class="badge ok">raw reads (SRA)</span>` : `<span class="badge">no SRA link</span>`}${r.sc ? `<span class="badge sc">single-cell?</span>` : ""}</div>
           <p class="sum">${esc(r.summary.slice(0, 320))}${r.summary.length > 320 ? "…" : ""}</p>
           ${r.samples.length ? `<p class="samples">Samples: ${esc(r.samples.slice(0, 6).join(" · "))}${r.samples.length > 6 ? ` · +${r.samples.length - 6} more` : ""}</p>` : ""}
+          <div class="small muted" data-avail="${r.acc}">Checking the GEO files…</div>
           <div class="acts"><button type="button" class="btn btn-ghost" data-use="${r.acc}">Runs and sample sheet</button><a class="btn btn-primary" href="../run/?gse=${r.acc}" data-runnow="${r.acc}">Run DESeq2 on it →</a>${r.counts ? `<a class="btn btn-ghost" href="https://www.ncbi.nlm.nih.gov/geo/download/?type=rnaseq_counts&acc=${r.acc}" target="_blank" rel="noopener">NCBI counts ↗</a>` : ""}</div>
         </div>`).join("");
+        fillAvail(fres);
         fres.querySelectorAll<HTMLAnchorElement>("[data-runnow]").forEach((a) => a.addEventListener("click", () => { try { sessionStorage.removeItem("rr-samples"); const r = rows.find((x) => x.acc === a.dataset.runnow); if (r?.taxon) sessionStorage.setItem("rr-organism", r.taxon.split(";")[0].trim()); } catch {} markDone(1); }));
         fres.querySelectorAll<HTMLButtonElement>("[data-use]").forEach((b) => b.addEventListener("click", () => { (form.elements.namedItem("acc") as HTMLInputElement).value = b.dataset.use!; lookup(b.dataset.use!); setTimeout(() => $<HTMLElement>("[data-form]").scrollIntoView({ behavior: "smooth", block: "start" }), 100); }));
         const hidden = rows.length - shown.length;

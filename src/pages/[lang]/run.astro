@@ -272,9 +272,13 @@ const description = "Real DESeq2 (R, compiled to WebAssembly) running inside thi
         const usable = files.filter((f) => f.score > -100);
         const org = samples[0]?.organism ?? "";
         try { if (org) sessionStorage.setItem("rr-organism", org); sessionStorage.setItem("rr-gse", gse); } catch {}
-        geoOut.innerHTML = `<p><b>${gse}</b>: ${samples.length} samples${org ? ` · <i>${esc(org)}</i>` : ""}. Supplementary files:</p><div class="rn-files">${files.map((f) => `<label class="${f.score > -100 ? "" : "bad"}"><input type="radio" name="geofile" value="${esc(f.name)}" ${f.score > -100 ? "" : "disabled"} ${f === usable[0] ? "checked" : ""}> <span>${esc(f.name)} ${f.note ? `<em>${esc(f.note)}</em>` : ""}</span></label>`).join("")}</div>${!usable.length ? `<p class="small">No text count table here. Use NCBI's own count matrix from the GEO page if it offers one, or the reads, and drop the matrix in box 1.</p>` : ""}`;
+        geoOut.innerHTML = `<p><b>${gse}</b>: ${samples.length} samples${org ? ` · <i>${esc(org)}</i>` : ""}. Supplementary files:</p><div class="rn-files">${files.map((f) => `<label class="${f.score > -100 ? "" : "bad"}"><input type="radio" name="geofile" value="${esc(f.name)}" ${f.score > -100 ? "" : "disabled"} ${f === usable[0] && !f.note ? "checked" : ""}> <span>${esc(f.name)} ${f.note ? `<em>${esc(f.note)}</em>` : ""}</span></label>`).join("")}</div>${!usable.length ? `<p class="small">No text count table here. Use NCBI's own count matrix from the GEO page if it offers one, or the reads, and drop the matrix in box 1.</p>` : ""}`;
         geoOut.querySelectorAll<HTMLInputElement>('input[name="geofile"]').forEach((r) => r.addEventListener("change", () => loadGeoFile(r.value).catch((e) => say(`Could not read ${r.value}: ${e.message}`, true))));
-        if (usable[0]) await loadGeoFile(usable[0].name);
+        if (usable[0]?.note) say(`⚠ ${usable[0].name}: ${usable[0].note}. DESeq2 may refuse it or give wrong results; use raw counts if the authors provide them elsewhere.`, true);
+        if (!usable.length) say(`⚠ ${gse} has no count table DESeq2 can read on GEO (${files.length ? files.map((f) => f.note || f.name).join("; ") : "no supplementary files"}).`, true);
+        if (samples.length && !samples.some((x) => Object.keys(x.chars).some((k) => new Set(samples.map((y) => y.chars[k] ?? "")).size > 1))) say("⚠ The GEO samples have no characteristics that differ between them: the conditions are only in the titles. Add a condition column to the sample sheet (box 2) before running.", true);
+        if (usable[0] && !usable[0].note) await loadGeoFile(usable[0].name);
+        else if (usable[0]) say("Not loaded automatically. Pick the file above if you still want to look at it.");
       } catch (e: any) { geoOut.textContent = `Could not read ${gse}: ${e.message}`; }
     }
     $("[data-geo-go]").addEventListener("click", () => fromGeo($<HTMLInputElement>("[data-gse]").value));

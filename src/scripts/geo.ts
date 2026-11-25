@@ -24,7 +24,7 @@ export async function listCountFiles(gse: string): Promise<CountFile[]> {
   const names = [...html.matchAll(/href="([^"\/?]+)"/g)].map((m) => decodeURIComponent(m[1])).filter((f) => f !== "filelist.txt");
   return names.map((name) => {
     let score = 0, note = "";
-    if (!/\.(txt|csv|tsv|tab)(\.gz)?$/i.test(name)) return { name, score: -100, note: /\.xlsx?(\.gz)?$/i.test(name) ? "Excel: save as CSV and drop it in" : /_RAW\.tar$/.test(name) ? "per-sample files in one archive" : "not a text table" };
+    if (!/\.(txt|csv|tsv|tab)(\.gz)?$/i.test(name)) return { name, score: -100, note: /\.xlsx?(\.gz)?$/i.test(name) ? (/fpkm|rpkm|tpm|cpm|norm/i.test(name) ? "Excel, normalized values: not for DESeq2" : "Excel: save as CSV and drop it in") : /_RAW\.tar$/.test(name) ? "per-sample files in one archive" : "not a text table" };
     if (/count/i.test(name)) score += 6;
     if (/raw|reads|featurecounts|htseq|readcount|umi/i.test(name)) score += 3;
     if (/gene/i.test(name)) score += 1;
@@ -108,3 +108,25 @@ export function sampleSheet(map: Map<string, GeoSample>, extra: Record<string, R
 
 /** g:Profiler organism id from a scientific name ("Mus musculus" → "mmusculus"). */
 export const gprofilerOrganism = (sci: string) => { const [g, s] = sci.trim().toLowerCase().split(/\s+/); return g && s ? g[0] + s : ""; };
+
+export interface Availability { level: "ok" | "warn" | "none"; counts: string; meta: string; metaOk: boolean; best?: string }
+/** What a series offers for an analysis here: a raw count table? sample metadata beyond the titles? */
+export async function availability(gse: string): Promise<Availability> {
+  const [files, samples] = await Promise.all([listCountFiles(gse).catch(() => [] as CountFile[]), fetchSamples(gse).catch(() => [] as GeoSample[])]);
+  const text = files.filter((f) => f.score > -100);
+  const raw = text.filter((f) => !/normalized/.test(f.note));
+  let level: Availability["level"] = "ok", counts = "";
+  if (raw.length && raw[0].score > 0) counts = `raw count file: ${raw[0].name}`;
+  else if (raw.length) { level = "warn"; counts = `text table found (${raw[0].name}), but its name does not say counts: check it`; }
+  else if (text.length) { level = "warn"; counts = "only normalized values (FPKM/TPM/CPM): DESeq2 needs raw counts"; }
+  else if (files.some((f) => f.note === "Excel: save as CSV and drop it in")) { level = "warn"; counts = "table is an Excel file: download it, save as CSV, drop it in"; }
+  else if (files.some((f) => /Excel, normalized/.test(f.note))) { level = "warn"; counts = "only an Excel file of normalized values: DESeq2 needs raw counts"; }
+  else if (files.some((f) => /archive/.test(f.note))) { level = "warn"; counts = "only per-sample files in a RAW.tar archive"; }
+  else { level = "none"; counts = files.length ? "no count table among the supplementary files" : "no supplementary files"; }
+  const keys = [...new Set(samples.flatMap((s) => Object.keys(s.chars)))];
+  const varying = keys.filter((k) => new Set(samples.map((s) => s.chars[k] ?? "")).size > 1);
+  const metaOk = varying.length > 0;
+  const meta = !samples.length ? "sample metadata could not be read" : metaOk ? `sample metadata: ${varying.slice(0, 3).join(", ")}${varying.length > 3 ? "…" : ""}` : "conditions only in the sample titles: check the sample sheet by hand";
+  if (!metaOk && level === "ok") level = "warn";
+  return { level, counts, meta, metaOk, best: raw[0]?.name };
+}
