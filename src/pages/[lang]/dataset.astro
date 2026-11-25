@@ -124,9 +124,28 @@ const organisms: [string, string][] = [["", "any organism"], ["Homo sapiens", "h
       if (!rec || rec.accession !== gse) throw new Error(`${gse} was not found in GEO.`);
       const rel = (rec.extrelations ?? []).find((x: any) => x.relationtype === "SRA");
       if (!rel && !rec.bioproject) throw new Error(`${gse} has no linked SRA project or BioProject in GEO (maybe only processed data). Check the GEO page.`);
-      return { srp: rel?.targetobject ?? "", prj: rec.bioproject ?? "", title: rec.title, summary: rec.summary, n: +rec.n_samples, taxon: rec.taxon, type: rec.gdstype };
+      return { srp: rel?.targetobject ?? "", prj: rec.bioproject ?? "", title: rec.title, summary: rec.summary, n: +rec.n_samples, taxon: rec.taxon, type: rec.gdstype, pdat: rec.pdat, samples: Object.fromEntries((rec.samples ?? []).map((x: any) => [x.accession, x.title])) as Record<string, string> };
     }
 
+    // NCBI SRA "runinfo" for a BioProject: used when ENA has not mirrored a new study yet.
+    async function sraRuns(prj: string, gsmTitles: Record<string, string> = {}): Promise<{ rows: Run[]; count: number }> {
+      const es = await fetch(`https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi?db=sra&term=${prj}[BioProject]&usehistory=y&retmode=json`).then((r) => r.json());
+      const count = +(es.esearchresult?.count ?? 0);
+      if (!count) return { rows: [], count: 0 };
+      const txt = await fetch(`https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi?db=sra&query_key=${es.esearchresult.querykey}&WebEnv=${es.esearchresult.webenv}&rettype=runinfo&retmode=text`).then((r) => r.text());
+      const lines = txt.trim().split(/\r?\n/).filter((l) => l && !l.startsWith("Run,ReleaseDate") || l.startsWith("Run,"));
+      const head = lines[0].split(","), ix = (n: string) => head.indexOf(n);
+      const seen: Record<string, number> = {};
+      const rows = lines.slice(1).filter((l) => l.startsWith("SRR") || l.startsWith("ERR") || l.startsWith("DRR")).map((l) => {
+        const f = l.split(","); const g = (n: string) => f[ix(n)] ?? "";
+        const sample = g("BioSample") || g("Sample"); seen[sample] = (seen[sample] ?? 0) + 1;
+        return { run: g("Run"), sample, alias: g("SampleName"), title: gsmTitles[g("SampleName")] || g("LibraryName") || g("SampleName") || "", layout: g("LibraryLayout"), strategy: g("LibraryStrategy"), instrument: g("Model"),
+          reads: +g("spots") || 0, bases: +g("bases") || 0, fastq: [], bytes: [Math.round((+g("size_MB") || 0) * 1e6)], md5: [], organism: g("ScientificName"),
+          on: /rna/i.test(g("LibraryStrategy")), name: g("Run"), condition: "", batch: "", tech: seen[sample] > 1 } as Run;
+      }).sort((a, b) => a.run.localeCompare(b.run));
+      return { rows, count };
+    }
+    let viaSRA = false;
     async function lookup(accRaw: string) {
       const acc = accRaw.trim().toUpperCase();
       runs = []; study = {}; result.hidden = true;
@@ -143,19 +162,31 @@ const organisms: [string, string][] = [["", "any organism"], ["Homo sapiens", "h
           enaJSON({ result: "study", query: q, fields: "study_accession,secondary_study_accession,study_title,study_description" }),
           enaJSON({ result: "read_run", query: q, fields }),
         ]);
-        if (!rr.length) throw new Error(`No sequencing runs found for ${acc} in ENA.`);
-        study = { acc, title: geo?.title || st[0]?.study_title || "", srp: st[0]?.secondary_study_accession || "", prj: st[0]?.study_accession || "", geo: geo ? acc : "", summary: geo?.summary || st[0]?.study_description || "" };
+        viaSRA = false;
+        let rows: Run[] | null = null;
+        if (!rr.length) {
+          // ENA mirrors NCBI with a delay of days to weeks; ask NCBI SRA directly
+          const prj = geo?.prj || (/^PRJ/.test(acc) ? acc : "");
+          if (prj) {
+            say("Not in ENA yet; asking NCBI SRA…");
+            const sr = await sraRuns(prj, geo?.samples ?? {});
+            if (sr.rows.length) { rows = sr.rows; viaSRA = true; }
+            else throw new Error(`${acc} (${prj}) has no sequencing runs in ENA or NCBI SRA yet${geo?.pdat ? `; GEO lists it as public since ${geo.pdat}` : ""}. Reads often appear a few days after the GEO release, or the submitter deposited processed data only. Check the GEO page.`);
+          } else throw new Error(`No sequencing runs found for ${acc} in ENA.`);
+        }
+        study = { acc, title: geo?.title || st[0]?.study_title || "", srp: st[0]?.secondary_study_accession || "", prj: st[0]?.study_accession || geo?.prj || "", geo: geo ? acc : "", summary: geo?.summary || st[0]?.study_description || "" };
         const seen: Record<string, number> = {};
-        runs = rr.map((x: any) => {
+        runs = rows ?? rr.map((x: any) => {
           seen[x.sample_accession] = (seen[x.sample_accession] ?? 0) + 1;
           return { run: x.run_accession, sample: x.sample_accession, alias: x.sample_alias, title: x.sample_title || x.experiment_title || "", layout: x.library_layout, strategy: x.library_strategy, instrument: x.instrument_model,
             reads: +x.read_count || 0, bases: +x.base_count || 0, fastq: (x.fastq_ftp || "").split(";").filter(Boolean), bytes: (x.fastq_bytes || "").split(";").map(Number), md5: (x.fastq_md5 || "").split(";"), organism: x.scientific_name,
             on: /rna/i.test(x.library_strategy || ""), name: x.run_accession, condition: "", batch: "", tech: seen[x.sample_accession] > 1 } as Run;
         }).sort((a: Run, b: Run) => a.run.localeCompare(b.run));
+        if (viaSRA) runs.sort((a, b) => a.run.localeCompare(b.run));
         guessConditions();
         render();
         const off = runs.filter((r) => !r.on).length;
-        say(`${runs.length} runs from ENA${geo ? `, via GEO → ${geo.srp || geo.prj}` : ""}.${off ? ` ${off} non-RNA-seq runs (${[...new Set(runs.filter((r) => !r.on).map((r) => r.strategy))].join(", ")}) are unticked.` : ""}`);
+        say(`${runs.length} runs from ${viaSRA ? "NCBI SRA (not mirrored in ENA yet: no direct FASTQ links or MD5s; use sra.sh, which downloads with the SRA Toolkit)" : "ENA"}${geo ? `, via GEO → ${geo.srp || geo.prj}` : ""}.${off ? ` ${off} non-RNA-seq runs (${[...new Set(runs.filter((r) => !r.on).map((r) => r.strategy))].join(", ")}) are unticked.` : ""}`);
       } catch (e) { say((e as Error).message, true); }
     }
 
@@ -205,11 +236,16 @@ const organisms: [string, string][] = [["", "any organism"], ["Homo sapiens", "h
 
     function samplesCSV() { const hasB = sel().some((r) => r.batch); return ["sample,run,condition" + (hasB ? ",batch" : "") + ",sample_accession,title,layout", ...sel().map((r) => [r.name, r.run, r.condition, ...(hasB ? [r.batch] : []), r.sample, `"${r.title.replace(/"/g, '""')}"`, r.layout.toLowerCase()].join(","))].join("\n") + "\n"; }
     function bashDownload() {
+      if (viaSRA) return `# ${study.acc}: these runs are not mirrored in ENA yet, so there are no direct FASTQ links or MD5 sums.
+# Use sra.sh instead (SRA Toolkit: prefetch + fasterq-dump), or try again in a few days.
+`;
       const L = ["#!/usr/bin/env bash", `# FASTQ download for ${study.acc}: ${sel().length} runs, ${fmtGB(sel().reduce((a, r) => a + r.bytes.reduce((x, y) => x + y, 0), 0))} GB`, "# Generated by Reads to Results. Files come from the ENA mirror; each is checked against its MD5.", "# For paired runs only the _1 and _2 files are taken (ENA sometimes adds a file of unpaired reads).", "set -euo pipefail", "mkdir -p raw && cd raw", ""];
       for (const r of sel()) { filesOf(r).forEach(([f, k]) => { const name = f.split("/").pop(); L.push(`curl -L -C - -o ${name} "https://${f}"`, `echo "${r.md5[k]}  ${name}" | md5sum -c -`); }); }
       L.push("", 'echo "All files downloaded and verified."'); return L.join("\n") + "\n";
     }
     function psDownload() {
+      if (viaSRA) return `# ${study.acc}: not mirrored in ENA yet; no direct FASTQ links. Use sra.sh (SRA Toolkit) or try again in a few days.
+`;
       const L = [`# FASTQ download for ${study.acc} (PowerShell). Generated by Reads to Results.`, "$ErrorActionPreference = 'Stop'", "New-Item -ItemType Directory -Force raw | Out-Null", "Set-Location raw", ""];
       for (const r of sel()) { filesOf(r).forEach(([f, k]) => { const name = f.split("/").pop(); L.push(`curl.exe -L -C - -o ${name} "https://${f}"`, `if ((Get-FileHash ${name} -Algorithm MD5).Hash -ne "${r.md5[k].toUpperCase()}") { throw "MD5 mismatch: ${name}" }`); }); }
       L.push("", 'Write-Host "All files downloaded and verified."'); return L.join("\n") + "\n";
@@ -218,6 +254,7 @@ const organisms: [string, string][] = [["", "any organism"], ["Homo sapiens", "h
     function salmonScript() {
       const L = ["#!/usr/bin/env bash", `# fastp + Salmon quantification for ${study.acc}. Generated by Reads to Results.`, "# Needs: conda env with fastp, salmon, multiqc (see the setup lesson); a Salmon index in ref/salmon_index; FASTQ files in raw/ (download.sh).", "set -euo pipefail", "THREADS=8", "mkdir -p trimmed qc quant", ""];
       for (const r of sel()) {
+        if (viaSRA) { r.fastq = r.layout === "PAIRED" ? [`${r.run}_1.fastq.gz`, `${r.run}_2.fastq.gz`] : [`${r.run}.fastq.gz`]; }
         if (r.layout === "PAIRED" && r.fastq.length >= 2) { const [a, b] = r.fastq.slice(-2).map((f) => f.split("/").pop()); L.push(`# ${r.run}  ${r.title}`, `fastp --in1 raw/${a} --in2 raw/${b} --out1 trimmed/${r.run}_1.fastq.gz --out2 trimmed/${r.run}_2.fastq.gz --detect_adapter_for_pe --length_required 30 --thread $THREADS --html qc/${r.run}.fastp.html --json qc/${r.run}.fastp.json`, `salmon quant -i ref/salmon_index -l A -1 trimmed/${r.run}_1.fastq.gz -2 trimmed/${r.run}_2.fastq.gz --validateMappings --gcBias --seqBias -p $THREADS -o quant/${r.name}`, ""); }
         else { const a = r.fastq[0]?.split("/").pop(); L.push(`# ${r.run}  ${r.title}`, `fastp --in1 raw/${a} --out1 trimmed/${r.run}.fastq.gz --length_required 30 --thread $THREADS --html qc/${r.run}.fastp.html --json qc/${r.run}.fastp.json`, `salmon quant -i ref/salmon_index -l A -r trimmed/${r.run}.fastq.gz --validateMappings --gcBias --seqBias -p $THREADS -o quant/${r.name}`, ""); }
       }
@@ -297,6 +334,6 @@ const organisms: [string, string][] = [["", "any organism"], ["Homo sapiens", "h
       dl("geo_search_results.csv", csv);
     });
     (window as any).__find = { findPage, get state() { return findState; } };
-    (window as any).__ds = { get runs() { return runs; }, samplesCSV, bashDownload, salmonScript, lookup };
+    (window as any).__ds = { get runs() { return runs; }, samplesCSV, bashDownload, salmonScript, lookup, sraRuns };
   </script>
 </Base>
