@@ -17,6 +17,7 @@ const ui = {
     "nav.script": "Script",
     "nav.results": "Results",
     "nav.enrich": "Enrichment",
+    "nav.hub": "Hub genes",
     "nav.learn": "Course",
     "nav.read": "Reading plots",
     "nav.methods": "Methods",

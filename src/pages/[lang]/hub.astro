@@ -1,0 +1,174 @@
+---
+import Base from "../../layouts/Base.astro";
+import { langs, path, type Lang } from "../../i18n/ui";
+import { algorithms } from "../../scripts/hub.mjs";
+export const getStaticPaths = () => langs.map((lang) => ({ params: { lang } }));
+const lang = Astro.params.lang as Lang;
+const title = "Hub genes";
+const description = "Upload a protein–protein interaction network (for example STRING's TSV export of your DEGs), rank the nodes with the twelve cytoHubba scores, pick the top N, and get the hub table, the network figure and files that open in Cytoscape.";
+const algoHelp: Record<string, string> = {
+  Degree: "number of neighbours", MCC: "maximal clique centrality: sum of (|C|−1)! over the maximal cliques containing the node; cytoHubba's best-performing score", DMNC: "density of the maximum neighbourhood component", MNC: "size of the largest connected component among the node's neighbours", EPC: "edge-percolated component: mean size of the node's component over 1,000 random removals of half the edges", BottleNeck: "how often the node is a bottleneck in shortest-path trees (subtree larger than n/4)", EcCentricity: "1 / the longest shortest path from the node", Closeness: "sum of 1 / distance to every other node", Radiality: "(diameter + 1 − mean distance) style reach", Betweenness: "number of shortest paths passing through the node", Stress: "number of shortest paths passing through the node, counting all paths", ClusteringCoefficient: "how connected the node's neighbours are to each other",
+};
+---
+<Base lang={lang} title={title} description={description} active="hub">
+  <div class="container">
+    <div class="page-head prose">
+      <h1>{title}</h1>
+      <p class="lead">{description}</p>
+      <p class="small muted">Everything runs in your browser; the network file is not uploaded anywhere. Scores follow cytoHubba's definitions and were checked against networkx on random graphs (see the data page).</p>
+    </div>
+
+    <section>
+      <div class="drop" data-drop tabindex="0" role="button" aria-label="Choose or drop a network file">
+        <input type="file" accept=".tsv,.txt,.csv,.sif" data-file hidden />
+        <strong>Drop the network file here, or click to choose</strong>
+        <span class="muted small">STRING: on your network page choose <em>Exports → … as simple tabular text output (TSV)</em>. Any two-column edge list (TSV/CSV/SIF) also works.</span>
+      </div>
+      <div class="rt-or"><span>or</span><button type="button" class="btn btn-ghost" data-example>Try with an example (STRING network of the top 150 airway DEGs)</button></div>
+      <p class="rt-status small muted" data-status></p>
+    </section>
+
+    <section class="hb" data-main hidden>
+      <div class="hb-side">
+        <div class="box">
+          <h3>Ranking</h3>
+          <label>Score <select data-algo>{algorithms.map((a) => <option value={a} selected={a === "MCC"}>{a}</option>)}</select></label>
+          <p class="small muted" data-algohelp></p>
+          <label>Top N hub genes <input type="number" data-n value="10" min="1" max="100" /></label>
+          <label>Minimum interaction score (STRING combined score, 0–1) <input type="number" data-minscore value="0.4" min="0" max="1" step="0.05" /></label>
+          <label class="chk"><input type="checkbox" data-only /> show only the top N and the edges between them</label>
+          <label class="chk"><input type="checkbox" data-labels checked /> show gene names</label>
+          <label>Layout <select data-layout><option value="cose">force-directed (cose)</option><option value="circle">circle</option><option value="concentric">concentric by rank</option><option value="grid">grid</option></select></label>
+        </div>
+        <div class="box">
+          <h3>Export</h3>
+          <div class="hb-btns">
+            <button class="btn btn-primary" data-dl="png">Figure PNG (3×)</button>
+            <button class="btn btn-ghost" data-dl="top">Top N table CSV</button>
+            <button class="btn btn-ghost" data-dl="all">All scores CSV</button>
+            <button class="btn btn-ghost" data-dl="sif">Network SIF (Cytoscape)</button>
+            <button class="btn btn-ghost" data-dl="attrs">Node attributes CSV (Cytoscape)</button>
+            <button class="btn btn-ghost" data-dl="cyjs">Cytoscape.js JSON</button>
+          </div>
+          <p class="small muted">In Cytoscape: File → Import → Network from File (the SIF), then File → Import → Table from File (the attributes CSV) to colour and size nodes by any score.</p>
+        </div>
+      </div>
+      <div class="hb-body">
+        <div class="stats" data-stats></div>
+        <div class="hb-fig"><div data-cy class="hb-cy"></div><div class="legend"><span><i style="background:#c0392b"></i>rank 1</span><span><i style="background:#f6d55c"></i>rank N</span><span><i style="background:#d9dddc"></i>other nodes</span><span class="muted">node size = chosen score</span></div></div>
+        <p class="caption" data-caption></p>
+        <h2 style="margin-top:2rem">Top <span data-n-out>10</span> hub genes by <span data-algo-out>MCC</span></h2>
+        <div class="table-wrap"><table class="hb-table"><thead><tr><th>Rank</th><th>Gene</th><th class="num" data-score-th>MCC</th><th class="num">Degree</th><th class="num">Betweenness</th><th class="num">Closeness</th><th class="num">Ranks in the other scores</th></tr></thead><tbody data-table></tbody></table></div>
+        <div class="note small"><strong>What a hub is and is not.</strong> A hub is a node that is central in this network, nothing more. STRING networks over-represent well-studied genes, so hubs are often simply famous genes. Treat the list as candidates, show their fold changes and adjusted p-values next to the scores, and say which score and which cutoff you used.</div>
+      </div>
+    </section>
+  </div>
+
+  <style>
+    .drop { border: 2px dashed var(--line-strong); border-radius: var(--radius); padding: 2rem 1.5rem; text-align: center; background: var(--surface); cursor: pointer; display: flex; flex-direction: column; gap: 0.5rem; align-items: center; }
+    .drop:hover, .drop.over { border-color: var(--accent); background: var(--accent-soft); }
+    .rt-or { display: flex; align-items: center; gap: 1rem; margin: 1rem 0 0.5rem; } .rt-or span { color: var(--dim); font-size: 0.9rem; }
+    .rt-status:empty { display: none; } .rt-status.err { color: var(--up); }
+    .hb { display: grid; grid-template-columns: 300px minmax(0, 1fr); gap: 2rem; align-items: start; margin-top: 2rem; }
+    @media (max-width: 900px) { .hb { grid-template-columns: 1fr; } }
+    .hb-side { display: flex; flex-direction: column; gap: 1rem; }
+    .box { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 0.9rem 1rem 1rem; }
+    .box h3 { margin: 0 0 0.5rem; font-size: 1.05rem; }
+    .box label { display: block; font-size: 0.86rem; color: var(--muted); margin: 0.5rem 0; }
+    .box input:not([type="checkbox"]), .box select { display: block; width: 100%; margin-top: 0.2rem; padding: 0.35rem 0.5rem; font: inherit; font-size: 0.92rem; color: var(--ink); background: var(--bg); border: 1px solid var(--line-strong); border-radius: 6px; }
+    .box label.chk { display: flex; gap: 0.5rem; align-items: center; } .box label.chk input { margin: 0; }
+    .hb-btns { display: flex; flex-wrap: wrap; gap: 0.4rem; } .hb-btns .btn { font-size: 0.82rem; padding: 0.4rem 0.8rem; }
+    .hb-fig { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 0.4rem; }
+    .hb-cy { width: 100%; height: 560px; }
+    .legend { display: flex; flex-wrap: wrap; gap: 0.5rem 1.2rem; font-size: 0.85rem; color: var(--muted); padding: 0.4rem 0.6rem 0.2rem; }
+    .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 0.4rem; }
+    .caption { font-size: 0.88rem; color: var(--muted); user-select: all; }
+    .hb-table td { font-size: 0.86rem; } .hb-table td.r { color: var(--dim); font-size: 0.76rem; }
+    .btn.flash { background: var(--accent); color: #fff; }
+  </style>
+
+  <script>
+    import cytoscape from "cytoscape";
+    import { parseNetwork, buildGraph, scoreAll, rank, algorithms } from "../../scripts/hub.mjs";
+    import { download } from "../../scripts/deg";
+    const $ = <T extends Element>(s: string) => document.querySelector<T>(s)!;
+    const algoHelp: Record<string, string> = JSON.parse(document.getElementById("algo-help")!.textContent!);
+    const drop = $<HTMLElement>("[data-drop]"), fileIn = $<HTMLInputElement>("[data-file]"), status = $<HTMLElement>("[data-status]"), main = $<HTMLElement>("[data-main]");
+    const say = (m: string, err = false) => { status.textContent = m; status.classList.toggle("err", err); };
+    let rawText = "", sourceName = "", net: any = null, g: any = null, scores: any = null, cy: any = null;
+
+    async function loadText(text: string, name: string) {
+      rawText = text; sourceName = name;
+      try { rebuild(); main.hidden = false; } catch (e) { say((e as Error).message, true); }
+    }
+    fileIn.addEventListener("change", () => { const f = fileIn.files?.[0]; if (f) f.text().then((t) => loadText(t, f.name)); });
+    drop.addEventListener("click", () => fileIn.click());
+    drop.addEventListener("dragover", (e) => { e.preventDefault(); drop.classList.add("over"); }); drop.addEventListener("dragleave", () => drop.classList.remove("over"));
+    drop.addEventListener("drop", (e) => { e.preventDefault(); drop.classList.remove("over"); const f = e.dataTransfer?.files?.[0]; if (f) f.text().then((t) => loadText(t, f.name)); });
+    $("[data-example]").addEventListener("click", async () => { say("Loading…"); loadText(await fetch("/data/example_string_network.tsv").then((r) => r.text()), "example_string_network.tsv"); });
+
+    const v = (s: string) => $<HTMLInputElement>(s).value;
+    function rebuild() {
+      net = parseNetwork(rawText, { minScore: parseFloat(v("[data-minscore]")) || 0 });
+      g = buildGraph(net.nodes, net.edges);
+      const t0 = performance.now();
+      scores = scoreAll(g);
+      say(`${sourceName}: ${net.format}, ${net.nodes.length} nodes, ${net.edges.length} edges${net.dropped ? ` (${net.dropped} edges below the score cutoff dropped)` : ""}; twelve scores computed in ${((performance.now() - t0) / 1000).toFixed(1)} s.`);
+      render(true);
+    }
+    function render(relayout = false) {
+      const algo = v("[data-algo]"), N = Math.max(1, Math.min(parseInt(v("[data-n]")) || 10, g.nodes.length));
+      $("[data-algohelp]").textContent = algoHelp[algo] ?? "";
+      const order = rank(g, scores, algo), top = order.slice(0, N), topSet = new Set(top);
+      const rankOf: Record<string, number[]> = {}; for (const a of algorithms) { const o = rank(g, scores, a); rankOf[a] = new Array(g.nodes.length); o.forEach((v2: number, i: number) => (rankOf[a][v2] = i + 1)); }
+      const comps = components(g);
+      $("[data-stats]").innerHTML = [[g.nodes.length, "nodes"], [net.edges.length, "edges"], [comps, "connected components"], [scores.diameter, "diameter"], [(2 * net.edges.length / g.nodes.length).toFixed(2), "mean degree"]].map(([a, b]) => `<div class="stat"><b>${a}</b><span>${b}</span></div>`).join("");
+      $("[data-n-out]").textContent = String(N); $("[data-algo-out]").textContent = algo; $("[data-score-th]").textContent = algo;
+      const fmt = (x: number) => (Number.isInteger(x) ? String(x) : x >= 100 ? x.toFixed(1) : x.toPrecision(3));
+      $("[data-table]").innerHTML = top.map((i: number, k: number) => `<tr><td>${k + 1}</td><td><b>${esc(g.nodes[i])}</b></td><td class="num">${fmt(scores[algo][i])}</td><td class="num">${scores.Degree[i]}</td><td class="num">${fmt(scores.Betweenness[i])}</td><td class="num">${fmt(scores.Closeness[i])}</td><td class="r">${algorithms.filter((a) => a !== algo).map((a) => `${a} ${rankOf[a][i]}`).join(" · ")}</td></tr>`).join("");
+      $("[data-caption]").textContent = `Protein–protein interaction network of ${g.nodes.length} genes (${net.edges.length} interactions${net.hasScore ? `, interaction score ≥ ${v("[data-minscore]")}` : ""}). Nodes are ranked by ${algo} as defined in cytoHubba; the ${N} highest-ranked genes are coloured from red (rank 1) to yellow (rank ${N}) and node size is proportional to the ${algo} score. Top ${N}: ${top.map((i: number) => g.nodes[i]).join(", ")}.`;
+      // network view
+      const only = $<HTMLInputElement>("[data-only]").checked, labels = $<HTMLInputElement>("[data-labels]").checked;
+      const show = only ? topSet : new Set(order);
+      const sMax = Math.max(...scores[algo]) || 1, sMin = Math.min(...scores[algo]);
+      const col = (k: number) => { const t = N > 1 ? k / (N - 1) : 0; const a = [192, 57, 43], b = [246, 213, 92]; return `rgb(${a.map((c, j) => Math.round(c + (b[j] - c) * t)).join(",")})`; };
+      const els: any[] = [];
+      g.nodes.forEach((name: string, i: number) => { if (!show.has(i)) return; const k = top.indexOf(i); els.push({ data: { id: String(i), label: name, color: k >= 0 ? col(k) : "#d9dddc", size: 14 + 34 * ((scores[algo][i] - sMin) / (sMax - sMin || 1)), hub: k >= 0 ? 1 : 0, zi: k >= 0 ? 10 : 1 } }); });
+      net.edges.forEach(([a, b]: [string, string], j: number) => { const ia = g.idx.get(a), ib = g.idx.get(b); if (show.has(ia) && show.has(ib)) els.push({ data: { id: `e${j}`, source: String(ia), target: String(ib), hubEdge: topSet.has(ia) && topSet.has(ib) ? 1 : 0 } }); });
+      if (!cy) {
+        cy = cytoscape({ container: $("[data-cy]"), elements: els, style: [
+          { selector: "node", style: { "background-color": "data(color)", width: "data(size)", height: "data(size)", label: labels ? "data(label)" : "", "font-size": 9, "font-family": "Arial, Helvetica, sans-serif", "text-valign": "center", "text-halign": "right", "text-margin-x": 3, "border-width": 1, "border-color": "#333", "z-index": "data(zi)" } },
+          { selector: "node[hub = 1]", style: { "font-weight": "bold", "font-size": 11 } },
+          { selector: "edge", style: { width: 1, "line-color": "#c9cec8", "curve-style": "haystack" } },
+          { selector: "edge[hubEdge = 1]", style: { width: 2, "line-color": "#8a8f8d" } },
+        ], layout: { name: v("[data-layout]"), animate: false, padding: 20 } as any, wheelSensitivity: 0.2 });
+      } else {
+        cy.elements().remove(); cy.add(els); cy.style().selector("node").style("label", labels ? "data(label)" : "").update();
+        if (relayout) cy.layout({ name: v("[data-layout]"), animate: false, padding: 20, ...(v("[data-layout]") === "concentric" ? { concentric: (n: any) => n.data("hub") ? 2 : 1, levelWidth: () => 1 } : {}) } as any).run();
+      }
+      if (relayout) cy.fit(undefined, 20);
+      (window as any).__hub = { net, g, scores, top: top.map((i: number) => g.nodes[i]), algo, N };
+    }
+    function components(gr: any) { const seen = new Array(gr.nodes.length).fill(false); let c = 0; for (let s = 0; s < gr.nodes.length; s++) { if (seen[s]) continue; c++; const st = [s]; seen[s] = true; while (st.length) { const x = st.pop()!; for (const y of gr.adj[x]) if (!seen[y]) { seen[y] = true; st.push(y); } } } return c; }
+    const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;");
+    $("[data-algo]").addEventListener("change", () => render(true)); $("[data-n]").addEventListener("input", () => render(false));
+    $("[data-minscore]").addEventListener("change", () => rebuild()); $("[data-only]").addEventListener("change", () => render(true)); $("[data-labels]").addEventListener("change", () => render(false)); $("[data-layout]").addEventListener("change", () => render(true));
+
+    const flash = (b: HTMLElement, t: string) => { const o = b.textContent; b.textContent = t; b.classList.add("flash"); setTimeout(() => { b.textContent = o; b.classList.remove("flash"); }, 1500); };
+    const csvEsc = (s: string) => (/[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s);
+    document.querySelectorAll<HTMLButtonElement>("[data-dl]").forEach((b) => b.addEventListener("click", () => {
+      if (!g) return; const algo = v("[data-algo]"), N = parseInt(v("[data-n]")) || 10, order = rank(g, scores, algo), top = order.slice(0, N);
+      const stem = `hub_${algo}_top${N}`;
+      const header = ["gene", ...algorithms].join(",");
+      const row = (i: number) => [csvEsc(g.nodes[i]), ...algorithms.map((a) => scores[a][i])].join(",");
+      if (b.dataset.dl === "top") download(`${stem}.csv`, ["rank," + header, ...top.map((i: number, k: number) => `${k + 1},${row(i)}`)].join("\n") + "\n", "text/csv");
+      if (b.dataset.dl === "all") download(`hub_all_scores.csv`, [header, ...order.map(row)].join("\n") + "\n", "text/csv");
+      if (b.dataset.dl === "sif") download(`network.sif`, net.edges.map(([a, b2]: [string, string]) => `${a}\tpp\t${b2}`).join("\n") + "\n", "text/plain");
+      if (b.dataset.dl === "attrs") download(`node_attributes.csv`, ["gene,hub_rank_" + algo + ",is_hub," + algorithms.join(","), ...order.map((i: number, k: number) => `${csvEsc(g.nodes[i])},${k + 1},${k < N ? 1 : 0},${algorithms.map((a) => scores[a][i]).join(",")}`)].join("\n") + "\n", "text/csv");
+      if (b.dataset.dl === "cyjs") download(`network.cyjs`, JSON.stringify({ format_version: "1.0", generated_by: "Reads to Results", elements: { nodes: g.nodes.map((n: string, i: number) => ({ data: { id: n, name: n, ...Object.fromEntries(algorithms.map((a) => [a, scores[a][i]])), hub_rank: order.indexOf(i) + 1 } })), edges: net.edges.map(([a, b2, sc]: [string, string, number | null]) => ({ data: { source: a, target: b2, interaction: "pp", ...(sc != null ? { score: sc } : {}) } })) } }, null, 1), "application/json");
+      if (b.dataset.dl === "png") { const a = document.createElement("a"); a.href = cy.png({ full: true, scale: 3, bg: "#ffffff" }); a.download = `${stem}.png`; a.click(); }
+      flash(b, "Saved");
+    }));
+  </script>
+  <script type="application/json" id="algo-help" set:html={JSON.stringify(algoHelp)} />
+</Base>

@@ -23,6 +23,7 @@ const defaultSources = ["GO:BP", "KEGG", "REAC"];
           <p class="small muted" data-handoff></p>
           <label>Up-regulated genes (one per line; Ensembl IDs or symbols)<textarea name="up" rows="5" placeholder="ENSG00000103196&#10;ENSG00000096060&#10;…"></textarea></label>
           <label>Down-regulated genes<textarea name="down" rows="5" placeholder="leave empty to test one list only"></textarea></label>
+          <label class="chk"><input type="checkbox" name="both" /> also test all genes together (up + down as one list)</label>
           <label>Background: all genes tested for differential expression (recommended; empty = all annotated genes)<textarea name="background" rows="3" placeholder="one gene per line"></textarea></label>
           <button type="button" class="btn btn-ghost" data-example>Load the airway example</button>
         </fieldset>
@@ -125,6 +126,7 @@ const defaultSources = ["GO:BP", "KEGG", "REAC"];
       const up = parseList(val("up")), down = parseList(val("down"));
       if (up.length) queries["up-regulated"] = up;
       if (down.length) queries["down-regulated"] = down;
+      if ((el("both") as HTMLInputElement).checked && up.length + down.length) queries["all differentially expressed"] = [...new Set([...up, ...down])];
       if (!Object.keys(queries).length) { say("Paste at least one gene list.", true); return; }
       const eo = opts();
       if (!eo.sources.length) { say("Tick at least one data source.", true); return; }

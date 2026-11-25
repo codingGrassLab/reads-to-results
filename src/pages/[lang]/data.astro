@@ -63,6 +63,15 @@ const s = {
       <tbody>{Object.entries(versions.packages).map(([k, v]) => <tr><td><code>{k}</code></td><td class="num">{v}</td></tr>)}</tbody>
     </table></div>
 
+    <h2>How the tools are checked</h2>
+    <ul>
+      <li><strong>Explore your results:</strong> up/down counts at several thresholds compared with R on DESeq2 (airway), edgeR, limma-voom and a simulated dataset; decimal-comma and tab-separated files.</li>
+      <li><strong>Script generator:</strong> the generated script is run in R on the airway count matrix and must reproduce this site's numbers (<code>npm run test:script</code>); also run on a simulated dataset with non-Ensembl IDs.</li>
+      <li><strong>Hub genes:</strong> Degree, Betweenness, Closeness, Radiality, EcCentricity, ClusteringCoefficient, MCC, MNC and DMNC are compared with networkx on random graphs, and Stress with brute-force shortest-path counting (<code>npm run test:hub</code>). EPC and BottleNeck follow cytoHubba's definitions (EPC with 1,000 random percolations).</li>
+      <li><strong>Dataset tool:</strong> run counts, layouts, file sizes and MD5s compared with independent ENA queries for six studies.</li>
+      <li><strong>Enrichment:</strong> computed by g:Profiler; this site only filters and draws its output.</li>
+    </ul>
+
     <h2>{s.check}</h2>
     <p>{s.checkText}</p>
     <div class="table-wrap"><table>

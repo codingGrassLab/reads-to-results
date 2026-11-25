@@ -49,13 +49,18 @@ const read = await lessons("read", lang);
           <h3>Enrichment</h3>
           <p>GO, KEGG, Reactome and WikiPathways enrichment of your up- and down-regulated genes, with the genes you tested as the statistical background, through the g:Profiler service. Table with fold enrichment, a journal-size dot plot, CSV and a ready legend.</p>
         </a>
-        <a class="card" href={path(lang, "methods")}>
+        <a class="card" href={path(lang, "hub")}>
           <span class="n">05</span>
+          <h3>Hub genes</h3>
+          <p>Upload the STRING network of your DEGs, rank nodes with the twelve cytoHubba scores (MCC, Degree, Betweenness…), choose the top N, and download the hub table, the network figure and SIF/attribute files that open in Cytoscape. Scores checked against networkx.</p>
+        </a>
+        <a class="card" href={path(lang, "methods")}>
+          <span class="n">06</span>
           <h3>Methods writer</h3>
           <p>Enter the tools, versions and settings you used (fastp, Salmon, tximport, DESeq2, apeglm, clusterProfiler) and get a methods paragraph with numbered, verified citations, plus a BibTeX file.</p>
         </a>
         <div class="card soon">
-          <span class="n">06</span>
+          <span class="n">07</span>
           <h3>More tools</h3>
           <p>Sensitivity analysis and multi-cohort comparison are next. The list grows as the author's own analyses need them.</p>
         </div>
