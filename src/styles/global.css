@@ -202,7 +202,6 @@ figcaption { font-size: 0.9rem; color: var(--muted); margin-top: 0.6em; line-hei
 .site-footer { border-top: 1px solid var(--line); padding: 2.2rem 0 3rem; color: var(--muted); font-size: 0.9rem; }
 .site-footer .row { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 1rem 2rem; }
 .site-footer a { color: var(--muted); }
-.site-footer .copy { margin: 1.4rem 0 0; padding-top: 1rem; border-top: 1px solid var(--line); text-align: center; font-size: 0.85rem; }
 .site-footer ul { list-style: none; display: flex; gap: 1.2rem; margin: 0; padding: 0; }
 
 /* download list */
