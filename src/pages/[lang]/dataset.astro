@@ -38,6 +38,11 @@ const organisms: [string, string][] = [["", "any organism"], ["Homo sapiens", "h
       <button type="submit" class="btn btn-primary">Look up</button>
       <button type="button" class="btn btn-ghost" data-example>Try GSE52778 (airway)</button>
     </form>
+    <div class="controls" role="radiogroup" style="margin:0.4rem 0 0.2rem">
+      <span class="small muted">Runs and files from:</span>
+      <label><input type="radio" name="src" value="ena" checked data-src /> ENA (direct FASTQ links with MD5, like the ENA browser)</label>
+      <label><input type="radio" name="src" value="ncbi" data-src /> NCBI SRA (like the SRA Run Selector; download with the SRA Toolkit)</label>
+    </div>
     <p class="ds-status small muted" data-status></p>
 
     <section data-result hidden>
@@ -164,7 +169,15 @@ const organisms: [string, string][] = [["", "any organism"], ["Homo sapiens", "h
         ]);
         viaSRA = false;
         let rows: Run[] | null = null;
-        if (!rr.length) {
+        const wantNCBI = (document.querySelector('[data-src][value="ncbi"]') as HTMLInputElement)?.checked;
+        if (wantNCBI) {
+          const prj = geo?.prj || st[0]?.study_accession || (/^PRJ/.test(acc) ? acc : "");
+          if (!prj) throw new Error("NCBI SRA needs a BioProject; none was found for this accession. Use ENA instead.");
+          say("Asking NCBI SRA…");
+          const sr = await sraRuns(prj, geo?.samples ?? {});
+          if (!sr.rows.length) throw new Error(`${acc} (${prj}) has no sequencing runs in NCBI SRA.`);
+          rows = sr.rows; viaSRA = true;
+        } else if (!rr.length) {
           // ENA mirrors NCBI with a delay of days to weeks; ask NCBI SRA directly
           const prj = geo?.prj || (/^PRJ/.test(acc) ? acc : "");
           if (prj) {
@@ -186,7 +199,7 @@ const organisms: [string, string][] = [["", "any organism"], ["Homo sapiens", "h
         guessConditions();
         render();
         const off = runs.filter((r) => !r.on).length;
-        say(`${runs.length} runs from ${viaSRA ? "NCBI SRA (not mirrored in ENA yet: no direct FASTQ links or MD5s; use sra.sh, which downloads with the SRA Toolkit)" : "ENA"}${geo ? `, via GEO → ${geo.srp || geo.prj}` : ""}.${off ? ` ${off} non-RNA-seq runs (${[...new Set(runs.filter((r) => !r.on).map((r) => r.strategy))].join(", ")}) are unticked.` : ""}`);
+        say(`${runs.length} runs from ${viaSRA ? "NCBI SRA (no direct FASTQ links or MD5s from this source; use sra.sh, which downloads with the SRA Toolkit)" : "ENA"}${geo ? `, via GEO → ${geo.srp || geo.prj}` : ""}.${off ? ` ${off} non-RNA-seq runs (${[...new Set(runs.filter((r) => !r.on).map((r) => r.strategy))].join(", ")}) are unticked.` : ""}`);
       } catch (e) { say((e as Error).message, true); }
     }
 
@@ -222,9 +235,9 @@ const organisms: [string, string][] = [["", "any organism"], ["Homo sapiens", "h
     }
     function stats() {
       const on = runs.filter((r) => r.on);
-      const gb = on.reduce((a, r) => a + filesOf(r).reduce((x, [, k]) => x + (r.bytes[k] || 0), 0), 0) / 1e9, reads = on.reduce((a, r) => a + r.reads, 0) / 1e6;
+      const gb = on.reduce((a, r) => a + (r.fastq.length ? filesOf(r).reduce((x, [, k]) => x + (r.bytes[k] || 0), 0) : r.bytes.reduce((x, y) => x + y, 0)), 0) / 1e9, reads = on.reduce((a, r) => a + r.reads, 0) / 1e6;
       const conds = [...new Set(on.map((r) => r.condition).filter(Boolean))];
-      $("[data-stats]").innerHTML = [[on.length, "runs selected"], [new Set(on.map((r) => r.sample)).size, "biological samples"], [reads.toFixed(0), "million reads"], [gb.toFixed(1), "GB of FASTQ"], [conds.length || "–", `conditions${conds.length ? ": " + conds.join(", ") : ""}`]].map(([v, l]) => `<div class="stat"><b>${v}</b><span>${esc(String(l))}</span></div>`).join("");
+      $("[data-stats]").innerHTML = [[on.length, "runs selected"], [new Set(on.map((r) => r.sample)).size, "biological samples"], [reads.toFixed(0), "million reads"], [gb.toFixed(1), viaSRA ? "GB in SRA format" : "GB of FASTQ"], [conds.length || "–", `conditions${conds.length ? ": " + conds.join(", ") : ""}`]].map(([v, l]) => `<div class="stat"><b>${v}</b><span>${esc(String(l))}</span></div>`).join("");
       const a = $<HTMLAnchorElement>("[data-script-link]");
       const p = new URLSearchParams({ input: "salmon", sampleCol: "sample", conditionCol: "condition", batchCol: on.some((r) => r.batch) ? "batch" : "", refLevel: conds[0] ?? "", trtLevel: conds[1] ?? "", minSamples: String(Math.max(1, Math.min(...conds.map((c) => on.filter((r) => r.condition === c).length).concat([3])))) });
       a.href = `../script/?${p}`;
@@ -236,15 +249,15 @@ const organisms: [string, string][] = [["", "any organism"], ["Homo sapiens", "h
 
     function samplesCSV() { const hasB = sel().some((r) => r.batch); return ["sample,run,condition" + (hasB ? ",batch" : "") + ",sample_accession,title,layout", ...sel().map((r) => [r.name, r.run, r.condition, ...(hasB ? [r.batch] : []), r.sample, `"${r.title.replace(/"/g, '""')}"`, r.layout.toLowerCase()].join(","))].join("\n") + "\n"; }
     function bashDownload() {
-      if (viaSRA) return `# ${study.acc}: these runs are not mirrored in ENA yet, so there are no direct FASTQ links or MD5 sums.
-# Use sra.sh instead (SRA Toolkit: prefetch + fasterq-dump), or try again in a few days.
+      if (viaSRA) return `# ${study.acc}: runs were taken from NCBI SRA, which gives no direct FASTQ links or MD5 sums.
+# Use sra.sh (SRA Toolkit: prefetch + fasterq-dump), or switch the source to ENA for direct links.
 `;
       const L = ["#!/usr/bin/env bash", `# FASTQ download for ${study.acc}: ${sel().length} runs, ${fmtGB(sel().reduce((a, r) => a + r.bytes.reduce((x, y) => x + y, 0), 0))} GB`, "# Generated by Reads to Results. Files come from the ENA mirror; each is checked against its MD5.", "# For paired runs only the _1 and _2 files are taken (ENA sometimes adds a file of unpaired reads).", "set -euo pipefail", "mkdir -p raw && cd raw", ""];
       for (const r of sel()) { filesOf(r).forEach(([f, k]) => { const name = f.split("/").pop(); L.push(`curl -L -C - -o ${name} "https://${f}"`, `echo "${r.md5[k]}  ${name}" | md5sum -c -`); }); }
       L.push("", 'echo "All files downloaded and verified."'); return L.join("\n") + "\n";
     }
     function psDownload() {
-      if (viaSRA) return `# ${study.acc}: not mirrored in ENA yet; no direct FASTQ links. Use sra.sh (SRA Toolkit) or try again in a few days.
+      if (viaSRA) return `# ${study.acc}: runs from NCBI SRA; no direct FASTQ links. Use sra.sh (SRA Toolkit) or switch the source to ENA.
 `;
       const L = [`# FASTQ download for ${study.acc} (PowerShell). Generated by Reads to Results.`, "$ErrorActionPreference = 'Stop'", "New-Item -ItemType Directory -Force raw | Out-Null", "Set-Location raw", ""];
       for (const r of sel()) { filesOf(r).forEach(([f, k]) => { const name = f.split("/").pop(); L.push(`curl.exe -L -C - -o ${name} "https://${f}"`, `if ((Get-FileHash ${name} -Algorithm MD5).Hash -ne "${r.md5[k].toUpperCase()}") { throw "MD5 mismatch: ${name}" }`); }); }
@@ -269,6 +282,7 @@ const organisms: [string, string][] = [["", "any organism"], ["Homo sapiens", "h
       dl(map[k][0], map[k][1]()); flash(b, "Saved");
     }));
     form.addEventListener("submit", (e) => { e.preventDefault(); lookup((form.elements.namedItem("acc") as HTMLInputElement).value); });
+    document.querySelectorAll<HTMLInputElement>("[data-src]").forEach((r) => r.addEventListener("change", () => { const a = (form.elements.namedItem("acc") as HTMLInputElement).value.trim(); if (a && (runs.length || status.classList.contains("err"))) lookup(a); }));
     $("[data-example]").addEventListener("click", () => { (form.elements.namedItem("acc") as HTMLInputElement).value = "GSE52778"; lookup("GSE52778"); });
     const q = new URLSearchParams(location.search).get("acc"); if (q) { (form.elements.namedItem("acc") as HTMLInputElement).value = q; lookup(q); }
     // ── GEO search ──────────────────────────────────────────────────────
