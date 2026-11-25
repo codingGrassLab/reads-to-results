@@ -38,6 +38,7 @@ const defaultSources = ["GO:BP", "KEGG", "REAC", "WP"];
         <fieldset>
           <legend>Figure</legend>
           <label>Width <select name="width"><option value="89">single column, 89 mm</option><option value="120" selected>1.5 columns, 120 mm</option><option value="183">double column, 183 mm</option></select></label>
+          <label>Show <select name="srcFilter"><option value="">all sources together</option></select></label>
           <label>Terms shown <input type="number" name="topN" value="15" min="3" max="40" /></label>
           <label>x axis <select name="xAxis"><option value="fold">fold enrichment</option><option value="p">−log10 adjusted p</option></select></label>
           <label>Font size <select name="font"><option value="7">7 pt</option><option value="8" selected>8 pt</option></select></label>
@@ -124,13 +125,16 @@ const defaultSources = ["GO:BP", "KEGG", "REAC", "WP"];
       try {
         const r = await gprofiler(queries, eo);
         last = { ...r, queries, eo };
+        const sel = el("srcFilter") as HTMLSelectElement, had = sel.value;
+        sel.innerHTML = `<option value="">all sources together</option>` + eo.sources.map((src) => `<option value="${src}">${sourceNames[src] ?? src} only</option>`).join("");
+        if ([...sel.options].some((o) => o.value === had)) sel.value = had;
         render();
         const fails = Object.entries(r.failed).filter(([, f]) => f.length).map(([q, f]) => `${f.length} of the ${q} IDs not recognised`).join("; ");
         say(`${r.terms.length} significant terms (g:Profiler data ${r.version}).${fails ? " " + fails + "." : ""}`);
       } catch (err) { say(`Could not run the enrichment: ${(err as Error).message}`, true); }
       btn.disabled = false;
     });
-    form.querySelectorAll<HTMLInputElement>('[name="minSize"], [name="maxSize"], [name="width"], [name="topN"], [name="xAxis"], [name="font"]').forEach((i) => i.addEventListener("input", () => last && render()));
+    form.querySelectorAll<HTMLInputElement>('[name="minSize"], [name="maxSize"], [name="width"], [name="topN"], [name="xAxis"], [name="font"], [name="srcFilter"]').forEach((i) => i.addEventListener("input", () => last && render()));
 
     const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;");
     const flash = (b: HTMLElement, t: string) => { const o = b.textContent; b.textContent = t; b.classList.add("flash"); setTimeout(() => { b.textContent = o; b.classList.remove("flash"); }, 1500); };
@@ -145,15 +149,18 @@ const defaultSources = ["GO:BP", "KEGG", "REAC", "WP"];
       $("[data-version]").textContent = version;
       lists.innerHTML = "";
       for (const q of Object.keys(queries)) {
-        const tq = terms.filter((t) => t.query === q && sizeOK(t)).sort((a, b) => a.p - b.p);
+        const srcF = val("srcFilter");
+        const tAll = terms.filter((t) => t.query === q && sizeOK(t));
+        const tq = tAll.filter((t) => !srcF || t.source === srcF).sort((a, b) => a.p - b.p);
+        const perSource = eo.sources.map((src) => `${sourceNames[src] ?? src} ${tAll.filter((t) => t.source === src).length}`).join(" · ");
         const o = dotOpts(); o.heightMm = Math.max(45, Math.min(o.topN, tq.length) * 4.2 + 18); o.title = q.charAt(0).toUpperCase() + q.slice(1);
         const sec = document.createElement("section"); sec.className = "en-list";
         const svg = tq.length ? dotPlotSVG(tq, o) : "";
-        sec.innerHTML = `<div class="en-head"><h2>${esc(o.title)} <span class="muted small">· ${queries[q].length} genes, ${last.mapped[q]} recognised, ${tq.length} terms</span></h2><div><button class="btn btn-ghost" data-x="svg">SVG</button><button class="btn btn-ghost" data-x="png">PNG 300 dpi</button><button class="btn btn-ghost" data-x="csv">CSV</button></div></div>` +
+        sec.innerHTML = `<div class="en-head" style="align-items:flex-start"><div><h2>${esc(o.title)} <span class="muted small">· ${queries[q].length} genes, ${last.mapped[q]} recognised</span></h2><p class="small muted" style="margin:0 0 .4rem">Significant terms after the size filter: ${esc(perSource)}${srcF ? ` · showing ${esc(sourceNames[srcF] ?? srcF)}` : ""}. A zero means the source was tested and nothing passed the threshold.</p></div><div><button class="btn btn-ghost" data-x="svg">SVG</button><button class="btn btn-ghost" data-x="png">PNG 300 dpi</button><button class="btn btn-ghost" data-x="csv">CSV</button></div></div>` +
           (tq.length ? `<div class="en-fig">${svg}</div><p class="caption">${esc(enrichCaption(tq, q, o, eo, version, queries[q].length))}</p>` : `<p class="muted">No term passes the threshold for this list.</p>`) +
           `<div class="table-wrap"><table class="en-table"><thead><tr><th>Term</th><th class="num">overlap / size</th><th class="num">fold</th><th class="num">adj. p</th><th>genes</th></tr></thead><tbody>${tq.slice(0, 60).map((t) => `<tr><td>${esc(t.name)}<div class="src">${esc(t.source)} · ${esc(t.id)}</div></td><td class="num">${t.overlap} / ${t.termSize}</td><td class="num">${t.fold.toFixed(2)}</td><td class="num">${t.p.toExponential(1)}</td><td class="genes">${esc(t.genes.slice(0, 12).map(sym).join(", "))}${t.genes.length > 12 ? ` +${t.genes.length - 12}` : ""}</td></tr>`).join("")}</tbody></table></div>${tq.length > 60 ? `<p class="small muted">Showing 60 of ${tq.length}; the CSV has all.</p>` : ""}`;
         sec.querySelectorAll<HTMLButtonElement>("[data-x]").forEach((b) => b.addEventListener("click", async () => {
-          const stem = `enrichment_${q.replace(/[^a-z]/g, "")}`;
+          const stem = `enrichment_${q.replace(/[^a-z]/g, "")}${srcF ? "_" + srcF.replace(/[^A-Za-z]/g, "") : ""}`;
           if (b.dataset.x === "csv") { download(`${stem}.csv`, termsCSV(tq), "text/csv"); flash(b, "Saved"); }
           else if (b.dataset.x === "svg") { download(`${stem}_dotplot.svg`, svg, "image/svg+xml"); flash(b, "Saved"); }
           else { b.textContent = "Rendering…"; try { download(`${stem}_dotplot_300dpi.png`, await svgToPng(svg, o.widthMm, o.heightMm, 300)); flash(b, "Saved"); } catch { flash(b, "Failed"); } }
