@@ -38,7 +38,7 @@ const defaultSources = ["GO:BP", "KEGG", "REAC", "WP"];
         <fieldset>
           <legend>Figure</legend>
           <label>Width <select name="width"><option value="89">single column, 89 mm</option><option value="120" selected>1.5 columns, 120 mm</option><option value="183">double column, 183 mm</option></select></label>
-          <label>Show <select name="srcFilter"><option value="">all sources together</option></select></label>
+          <label>Table: show <select name="srcFilter"><option value="">all sources</option></select></label>
           <label>Terms shown <input type="number" name="topN" value="15" min="3" max="40" /></label>
           <label>x axis <select name="xAxis"><option value="fold">fold enrichment</option><option value="p">−log10 adjusted p</option></select></label>
           <label>Font size <select name="font"><option value="7">7 pt</option><option value="8" selected>8 pt</option></select></label>
@@ -81,6 +81,7 @@ const defaultSources = ["GO:BP", "KEGG", "REAC", "WP"];
     .caption { font-size: 0.85rem; color: var(--muted); user-select: all; margin: 0.6rem 0 0; }
     .btn.flash { background: var(--accent); color: #fff; }
     /* the map panel is created at runtime, so its rules are global */
+    .en-figblock { margin: 1.2rem 0 1.8rem; }
     :global(.kegg-frame) { border: 1px solid var(--line-strong); border-radius: var(--radius-sm); overflow: hidden; background: #fff; margin: 1rem 0; }
     :global(.kegg-bar) { display: flex; justify-content: space-between; gap: 1rem; flex-wrap: wrap; font-size: 0.82rem; color: var(--muted); padding: 0.45rem 0.8rem; background: var(--bg-2); border-bottom: 1px solid var(--line); }
     :global(.kegg-frame iframe) { width: 100%; height: 720px; border: 0; display: block; }
@@ -130,7 +131,7 @@ const defaultSources = ["GO:BP", "KEGG", "REAC", "WP"];
         const r = await gprofiler(queries, eo);
         last = { ...r, queries, eo };
         const sel = el("srcFilter") as HTMLSelectElement, had = sel.value;
-        sel.innerHTML = `<option value="">all sources together</option>` + eo.sources.map((src) => `<option value="${src}">${sourceNames[src] ?? src} only</option>`).join("");
+        sel.innerHTML = `<option value="">all sources</option>` + eo.sources.map((src) => `<option value="${src}">${sourceNames[src] ?? src} only</option>`).join("");
         if ([...sel.options].some((o) => o.value === had)) sel.value = had;
         render();
         const fails = Object.entries(r.failed).filter(([, f]) => f.length).map(([q, f]) => `${f.length} of the ${q} IDs not recognised`).join("; ");
@@ -154,15 +155,29 @@ const defaultSources = ["GO:BP", "KEGG", "REAC", "WP"];
       lists.innerHTML = "";
       for (const q of Object.keys(queries)) {
         const srcF = val("srcFilter");
-        const tAll = terms.filter((t) => t.query === q && sizeOK(t));
-        const tq = tAll.filter((t) => !srcF || t.source === srcF).sort((a, b) => a.p - b.p);
+        const tAll = terms.filter((t) => t.query === q && sizeOK(t)).sort((a, b) => a.p - b.p);
+        const tq = tAll.filter((t) => !srcF || t.source === srcF);
         const perSource = eo.sources.map((src) => `${sourceNames[src] ?? src} ${tAll.filter((t) => t.source === src).length}`).join(" · ");
-        const o = dotOpts(); o.heightMm = Math.max(45, Math.min(o.topN, tq.length) * 4.2 + 18); o.title = q.charAt(0).toUpperCase() + q.slice(1);
         const sec = document.createElement("section"); sec.className = "en-list";
-        const svg = tq.length ? dotPlotSVG(tq, o) : "";
-        sec.innerHTML = `<div class="en-head" style="align-items:flex-start"><div><h2>${esc(o.title)} <span class="muted small">· ${queries[q].length} genes, ${last.mapped[q]} recognised</span></h2><p class="small muted" style="margin:0 0 .4rem">Significant terms after the size filter: ${esc(perSource)}${srcF ? ` · showing ${esc(sourceNames[srcF] ?? srcF)}` : ""}. A zero means the source was tested and nothing passed the threshold.</p></div><div><button class="btn btn-ghost" data-x="svg">SVG</button><button class="btn btn-ghost" data-x="png">PNG 300 dpi</button><button class="btn btn-ghost" data-x="csv">CSV</button></div></div>` +
-          (tq.length ? `<div class="en-fig">${svg}</div><p class="caption">${esc(enrichCaption(tq, q, o, eo, version, queries[q].length))}</p>` : `<p class="muted">No term passes the threshold for this list.</p>`) +
-          `<div class="table-wrap"><table class="en-table"><thead><tr><th>Term</th><th class="num">overlap / size</th><th class="num">fold</th><th class="num">adj. p</th><th>genes</th></tr></thead><tbody>${tq.slice(0, 60).map((t) => `<tr><td>${esc(t.name)}<div class="src">${esc(t.source)} · ${esc(t.id)}${t.source === "KEGG" ? ` · <a href="#" data-kegg="${esc(t.id)}" title="Open this pathway on kegg.jp with your genes highlighted">pathway map ↗</a>` : ""}</div></td><td class="num">${t.overlap} / ${t.termSize}</td><td class="num">${t.fold.toFixed(2)}</td><td class="num">${t.p.toExponential(1)}</td><td class="genes">${esc(t.genes.slice(0, 12).map(sym).join(", "))}${t.genes.length > 12 ? ` +${t.genes.length - 12}` : ""}</td></tr>`).join("")}</tbody></table></div>${tq.length > 60 ? `<p class="small muted">Showing 60 of ${tq.length}; the CSV has all.</p>` : ""}`;
+        const qTitle = q.charAt(0).toUpperCase() + q.slice(1);
+        sec.innerHTML = `<div class="en-head" style="align-items:flex-start"><div><h2>${esc(qTitle)} <span class="muted small">· ${queries[q].length} genes, ${last.mapped[q]} recognised</span></h2><p class="small muted" style="margin:0 0 .4rem">Significant terms after the size filter: ${esc(perSource)}. A zero means the source was tested and nothing passed the threshold.</p></div><div><button class="btn btn-ghost" data-x="csv">CSV, all sources</button></div></div><div data-figs></div>` +
+          `<h3 style="margin-top:1.5rem">Table${srcF ? ` · ${esc(sourceNames[srcF] ?? srcF)}` : ""}</h3><div class="table-wrap"><table class="en-table"><thead><tr><th>Term</th><th class="num">overlap / size</th><th class="num">fold</th><th class="num">adj. p</th><th>genes</th></tr></thead><tbody>${tq.slice(0, 60).map((t) => `<tr><td>${esc(t.name)}<div class="src">${esc(t.source)} · ${esc(t.id)}${t.source === "KEGG" ? ` · <a href="#" data-kegg="${esc(t.id)}" title="Open this pathway on kegg.jp with your genes highlighted">pathway map ↗</a>` : ""}</div></td><td class="num">${t.overlap} / ${t.termSize}</td><td class="num">${t.fold.toFixed(2)}</td><td class="num">${t.p.toExponential(1)}</td><td class="genes">${esc(t.genes.slice(0, 12).map(sym).join(", "))}${t.genes.length > 12 ? ` +${t.genes.length - 12}` : ""}</td></tr>`).join("")}</tbody></table></div>${tq.length > 60 ? `<p class="small muted">Showing 60 of ${tq.length}; the CSV has all.</p>` : ""}`;
+        // one publication figure per source: the figure a paper shows for GO, for KEGG, for Reactome…
+        const figs = sec.querySelector("[data-figs]")!;
+        for (const src of eo.sources) {
+          const ts = tAll.filter((t) => t.source === src); if (!ts.length) continue;
+          const o = dotOpts(); o.heightMm = Math.max(40, Math.min(o.topN, ts.length) * 4.2 + 18); o.title = `${qTitle} · ${sourceNames[src] ?? src}`;
+          const svg = dotPlotSVG(ts, o);
+          const f = document.createElement("div"); f.className = "en-figblock";
+          f.innerHTML = `<div class="en-head"><h3 style="margin:0">${esc(sourceNames[src] ?? src)} <span class="muted small">· ${ts.length} terms, top ${Math.min(o.topN, ts.length)} shown</span></h3><div><button class="btn btn-ghost" data-y="svg">SVG</button><button class="btn btn-ghost" data-y="png">PNG 300 dpi</button><button class="btn btn-ghost" data-y="csv">CSV</button></div></div><div class="en-fig">${svg}</div><p class="caption">${esc(enrichCaption(ts, q, o, { ...eo, sources: [src] }, version, queries[q].length))}</p>`;
+          f.querySelectorAll<HTMLButtonElement>("[data-y]").forEach((b) => b.addEventListener("click", async () => {
+            const stem = `enrichment_${q.replace(/[^a-z]/g, "")}_${src.replace(/[^A-Za-z]/g, "")}`;
+            if (b.dataset.y === "csv") { download(`${stem}.csv`, termsCSV(ts), "text/csv"); flash(b, "Saved"); }
+            else if (b.dataset.y === "svg") { download(`${stem}_dotplot.svg`, svg, "image/svg+xml"); flash(b, "Saved"); }
+            else { b.textContent = "Rendering…"; try { download(`${stem}_dotplot_300dpi.png`, await svgToPng(svg, o.widthMm, o.heightMm, 300)); flash(b, "Saved"); } catch { flash(b, "Failed"); } }
+          }));
+          figs.appendChild(f);
+        }
         sec.querySelectorAll<HTMLAnchorElement>("[data-kegg]").forEach((a) => a.addEventListener("click", async (ev) => {
           ev.preventDefault();
           const term = tq.find((t) => t.id === a.dataset.kegg); if (!term) return;
@@ -170,7 +185,6 @@ const defaultSources = ["GO:BP", "KEGG", "REAC", "WP"];
           try {
             const ent = await toEntrez(eo.organism, term.genes); const url = keggMapURL(eo.organism, term.id, ent);
             a.textContent = ent.length ? `pathway map (${ent.length} genes highlighted)` : "pathway map (no Entrez IDs found)";
-            // one map panel per list, placed below the table at full width
             sec.querySelector(".kegg-frame")?.remove();
             const panel = document.createElement("div"); panel.className = "kegg-frame";
             panel.innerHTML = `<div class="kegg-bar"><span><b>${esc(term.name)}</b> (${esc(term.id)}) · map served by KEGG, kegg.jp; your genes are highlighted in red</span><span><a href="${url}" target="_blank" rel="noopener">open on kegg.jp ↗</a> · <a href="#" data-close>close</a></span></div><iframe src="${url}" title="KEGG pathway ${esc(term.id)}" referrerpolicy="no-referrer"></iframe>`;
@@ -179,12 +193,7 @@ const defaultSources = ["GO:BP", "KEGG", "REAC", "WP"];
             panel.scrollIntoView({ behavior: "smooth", block: "start" });
           } catch { a.textContent = "could not convert IDs"; setTimeout(() => (a.textContent = o0), 4000); }
         }));
-        sec.querySelectorAll<HTMLButtonElement>("[data-x]").forEach((b) => b.addEventListener("click", async () => {
-          const stem = `enrichment_${q.replace(/[^a-z]/g, "")}${srcF ? "_" + srcF.replace(/[^A-Za-z]/g, "") : ""}`;
-          if (b.dataset.x === "csv") { download(`${stem}.csv`, termsCSV(tq), "text/csv"); flash(b, "Saved"); }
-          else if (b.dataset.x === "svg") { download(`${stem}_dotplot.svg`, svg, "image/svg+xml"); flash(b, "Saved"); }
-          else { b.textContent = "Rendering…"; try { download(`${stem}_dotplot_300dpi.png`, await svgToPng(svg, o.widthMm, o.heightMm, 300)); flash(b, "Saved"); } catch { flash(b, "Failed"); } }
-        }));
+        sec.querySelector<HTMLButtonElement>('[data-x="csv"]')!.addEventListener("click", (e3) => { download(`enrichment_${q.replace(/[^a-z]/g, "")}_all_sources.csv`, termsCSV(tAll), "text/csv"); flash(e3.currentTarget as HTMLElement, "Saved"); });
         lists.appendChild(sec);
       }
       out.hidden = false;
