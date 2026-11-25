@@ -50,5 +50,18 @@ ok(txi.runs.every((r, i) => txi.total_counts[i] === salmon[r].num_mapped), "txim
 ok(txi.pick.find((g) => g.symbol === "ANGPTL7").counts.join() === counting.counts[counting.symbols.indexOf("ANGPTL7")].slice(0, 2).join(), "ANGPTL7 counts agree between Salmon/tximport and the STAR-based subset count");
 ok(txi.pick.find((g) => g.symbol === "TNMD").counts.every((c) => c === 0), "TNMD is zero in both Salmon samples");
 
+// "Break it yourself" and "Mistakes" (analysis/break.R) must agree with the course analysis (analysis/run.R)
+const br = j("src/data/break.json"), bg = br.grid, bm = br.mistakes;
+ok(br.base.sig === summary.sig_005 && br.base.up === summary.up_005 && br.base.down === summary.down_005 && br.base.tested === summary.genes_tested, `break.R reproduces the course result (${br.base.sig} genes, ${br.base.up} up, ${br.base.down} down)`);
+ok(bg.all_paired.sig === br.base.sig && bg.all_paired.lost === 0 && bg.all_paired.new === 0, "the default switch setting is the course analysis");
+ok(Object.values(bg).every((x) => x.kept + x.lost === br.base.sig && x.kept + x.new === x.sig && x.up + x.down === x.sig), "every scenario: kept + lost = reference, kept + new = its own count, up + down = significant");
+ok(Object.keys(bg).length === 8 && Object.values(bg).every((x) => x.markers.length === 7 && x.top.length === 10), "8 scenarios, each with the 7 marker genes and a top 10");
+ok(bg.all_paired.markers.every((x) => x.padj < 0.05), "all 7 marker genes are significant in the correct analysis");
+ok(bm.p_vs_padj.raw_p === summary.raw_p_005 && bm.p_vs_padj.padj === summary.sig_005, "p vs padj numbers match the course analysis");
+ok(bm.lfc_threshold.posthoc === summary.sig_005_lfc1 && bm.lfc_threshold.tested < bm.lfc_threshold.posthoc, `fold-change cut: ${bm.lfc_threshold.posthoc} post hoc = course number; lfcThreshold test gives fewer (${bm.lfc_threshold.tested})`);
+ok(/full rank/.test(bm.confounded.error) && /same number of samples and coefficients/.test(bm.one_vs_one.error) && /not integers/.test(bm.normalized_error.error), "the three DESeq2 error messages were captured");
+ok(bm.background.genes === go.n_genes && bm.background.universe === go.n_universe && bm.background.terms_tested_bg === go.n_terms, `enrichment with the tested-gene background equals the course GO result (${go.n_terms} terms)`);
+ok(bm.shrinkage.rows.every((r) => Math.abs(r.shrunk) < Math.abs(r.lfc)), "shrinkage pulls every listed fold change toward zero");
+
 console.log(failed ? `\n${failed} check(s) failed` : "\nall checks passed");
 process.exit(failed ? 1 : 0);

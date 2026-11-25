@@ -14,6 +14,8 @@ const ui = {
       "A free course in bulk RNA-seq analysis: one real experiment followed from FASTQ files to differentially expressed genes and pathways with Salmon and DESeq2, every command with its actual output, and an interactive guide to reading the plots.",
     "nav.home": "Home",
     "nav.learn": "Course",
+    "nav.break": "Break it",
+    "nav.mistakes": "Mistakes",
     "nav.read": "Reading plots",
     "nav.about": "About",
     "nav.menu": "Menu",

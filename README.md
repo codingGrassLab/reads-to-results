@@ -3,6 +3,8 @@
 A free course in bulk RNA-seq analysis. One real experiment (airway) is followed from raw reads to differentially expressed genes and pathways with Salmon and DESeq2: every command with its actual output, and every number computed by one R script. Static site built with Astro.
 
 - **Course** (11 lessons): raw reads → QC → trimming → how Salmon works → salmon quant → tximport → DESeq2 → plots → enrichment → your own project.
+- **Break it yourself**: switches (design, lost sample, two donors, swapped label) over eight real DESeq2 runs on airway.
+- **Ten mistakes**: confounding, too few replicates, swapped labels, normalized input, p vs padj, post-hoc fold-change cuts, unshrunken fold changes, enrichment background, Excel gene names, each made on purpose on airway. Numbers from `analysis/break.R` → `src/data/break.json`.
 - **Reading results** (8 pages): PCA, volcano, MA plot, p-values, log2 fold change, normalization, dispersion, heatmaps, each with an interactive figure drawn from the real data.
 - **Data and methods**: inputs, versions, downloads, a check against the original paper, and a Colab notebook.
 

@@ -1,0 +1,106 @@
+---
+import Base from "../../layouts/Base.astro";
+import { langs, path, type Lang } from "../../i18n/ui";
+import data from "../../data/break.json";
+export const getStaticPaths = () => langs.map((lang) => ({ params: { lang } }));
+const lang = Astro.params.lang as Lang;
+const title = "Ten mistakes, and what they do to real data";
+const description = "The errors that most often make an RNA-seq result wrong, each one made on purpose on the airway data so you can see the damage.";
+const g = data.grid as any, m = data.mistakes as any, base = data.base as any;
+const f = (n: number) => n.toLocaleString("en-US");
+const pct = (a: number, b: number) => Math.round((100 * a) / b);
+const clean = (s: string) => s.replace(/\s+/g, " ").trim();
+const chance = Math.round(0.05 * base.tested);
+---
+<Base lang={lang} title={title} description={description} active="mistakes">
+  <div class="container prose">
+    <div class="page-head">
+      <h1>{title}</h1>
+      <p class="lead">{description}</p>
+      <p class="small muted">The reference is the course's analysis: <code>~ cell + dex</code> on all eight samples, {f(base.sig)} genes at adjusted p &lt; 0.05. Every number below is a real run on the same counts (DESeq2 {data.versions.deseq2}, clusterProfiler {data.versions.clusterProfiler}). Several of these can be switched on and off in <a href={path(lang, "break")}>Break it yourself</a>.</p>
+    </div>
+
+    <ol class="mk">
+      <li id="covariate">
+        <h2>Leaving out a known source of variation</h2>
+        <p class="what"><b>The mistake.</b> The samples come from four donors, but the design is <code>~ dex</code>, as if every sample were independent.</p>
+        <p class="hit"><b>On airway:</b> {f(g.all_unpaired.sig)} genes instead of {f(base.sig)} ({pct(g.all_unpaired.sig, base.sig)}%); {f(g.all_unpaired.lost)} real changes lost. Differences between donors stay in the noise.</p>
+        <p class="fix"><b>Instead.</b> Put every known source of variation (donor, batch, sex) in the design, before the variable of interest: <code>~ cell + dex</code>. Colour the PCA by each metadata column to find them.</p>
+      </li>
+      <li id="confounding">
+        <h2>Batch confounded with the condition</h2>
+        <p class="what"><b>The mistake.</b> All treated samples were prepared on one day and all controls on another. The sample table then has a batch column identical to the treatment.</p>
+        <p class="hit"><b>On airway</b> (a fake batch column equal to <code>dex</code>, design <code>~ batch + dex</code>), DESeq2 refuses:</p>
+        <pre><code>{clean(m.confounded.error)}</code></pre>
+        <p class="fix"><b>Instead.</b> This cannot be fixed after the experiment: the batch effect and the treatment effect are the same numbers. Plan batches so that every batch contains every condition. Dropping <code>batch</code> from the formula makes DESeq2 run, but every "treatment" gene may then be a batch gene; that has to be stated.</p>
+      </li>
+      <li id="replicates">
+        <h2>Too few replicates</h2>
+        <p class="what"><b>The mistake.</b> One sample per group, or two.</p>
+        <p class="hit"><b>On airway</b>, one treated against one untreated sample:</p>
+        <pre><code>{clean(m.one_vs_one.error)}</code></pre>
+        <p class="hit">With two donors (2 vs 2): {f(g.n2_paired.sig)} genes ({pct(g.n2_paired.sig, base.sig)}% of the four-donor result); ignoring the donor as well: {f(g.n2_unpaired.sig)}. Losing a single sample (3 vs 4): {f(g.drop1_paired.sig)}.</p>
+        <p class="fix"><b>Instead.</b> Without replicates there is no estimate of variability and no test. Three per group is the usual minimum; more replicates help more than more reads.</p>
+      </li>
+      <li id="swap">
+        <h2>A swapped sample label</h2>
+        <p class="what"><b>The mistake.</b> Two rows of the sample table are exchanged: donor N61311's treated sample is labelled untreated and the other way round.</p>
+        <p class="hit"><b>On airway:</b> {f(g.swap_paired.sig)} gene{g.swap_paired.sig === 1 ? "" : "s"} instead of {f(base.sig)}; none of the seven known dexamethasone genes is found. One wrong pair makes that donor look like it responds in the opposite direction.</p>
+        <p class="fix"><b>Instead.</b> Before the test, check that replicates group together in the PCA and in the sample correlation heatmap. A sample that sits with the other group is a swap until proven otherwise.</p>
+      </li>
+      <li id="normalized">
+        <h2>Giving DESeq2 normalized values</h2>
+        <p class="what"><b>The mistake.</b> Using TPM, FPKM, CPM or normalized counts (for example from a GEO supplementary file) as input.</p>
+        <p class="hit"><b>On airway</b>, DESeq2's own normalized counts as input:</p>
+        <pre><code>{clean(m.normalized_error.error)}</code></pre>
+        <p class="hit">Rounding them to integers makes the error go away but not the problem: counts per million, rounded, give {f(m.cpm_rounded.sig)} genes ({pct(m.cpm_rounded.sig, base.sig)}%), because scaling every sample to one million throws away how much information each count carries. Normalized counts rounded happen to give {f(m.normalized_rounded.sig)} here only because airway's size factors are close to 1; it is still normalizing twice.</p>
+        <p class="fix"><b>Instead.</b> DESeq2 takes raw counts (or Salmon's estimated counts through tximport) and normalizes itself. If a study only shares TPM or FPKM, it cannot be reanalysed with DESeq2.</p>
+      </li>
+      <li id="padj">
+        <h2>Reading the p-value instead of the adjusted p-value</h2>
+        <p class="what"><b>The mistake.</b> Calling every gene with p &lt; 0.05 significant.</p>
+        <p class="hit"><b>On airway:</b> {f(m.p_vs_padj.raw_p)} genes have p &lt; 0.05, against {f(m.p_vs_padj.padj)} with adjusted p &lt; 0.05. With {f(base.tested)} genes tested, about {f(chance)} would pass p &lt; 0.05 by chance alone even if the drug did nothing (5% of {f(base.tested)}).</p>
+        <p class="fix"><b>Instead.</b> Use <code>padj</code> (Benjamini–Hochberg), which controls the share of false discoveries among the genes you call significant.</p>
+      </li>
+      <li id="lfc">
+        <h2>Cutting on fold change after the test</h2>
+        <p class="what"><b>The mistake.</b> Testing for "any change", then keeping genes with |log2 fold change| &gt; 1 and calling them "significantly more than two-fold".</p>
+        <p class="hit"><b>On airway:</b> {f(m.lfc_threshold.posthoc)} genes pass adjusted p &lt; 0.05 and |log2FC| &gt; 1. Testing the actual claim, that the change is larger than two-fold (<code>results(dds, lfcThreshold = 1)</code>), gives {f(m.lfc_threshold.tested)}.</p>
+        <p class="fix"><b>Instead.</b> The post-hoc cut is fine as a filter, but it does not show that the change exceeds two-fold. If that is the claim, test it with <code>lfcThreshold</code>.</p>
+      </li>
+      <li id="shrinkage">
+        <h2>Trusting large fold changes of genes with few reads</h2>
+        <p class="what"><b>The mistake.</b> Ranking genes by raw log2 fold change, or reporting large fold changes that have no statistical support.</p>
+        <p class="hit"><b>On airway</b>, after the count filter, {m.shrinkage.n_big_not_sig} genes have |log2FC| &gt; 2 without being significant. Their median mean count is {m.shrinkage.median_baseMean_big}, against {m.shrinkage.median_baseMean_all} for all genes that passed the filter: a handful of reads can make a huge ratio. apeglm shrinkage pulls each of them toward zero; {m.shrinkage.n_still_big_after_shrink} stay above 2.</p>
+        <div class="table-wrap"><table><thead><tr><th>gene</th><th class="num">mean count</th><th class="num">raw log2FC</th><th class="num">shrunk log2FC</th><th class="num">adjusted p</th></tr></thead><tbody>
+          {m.shrinkage.rows.map((r: any) => <tr><td><b>{r.symbol ?? r.id}</b></td><td class="num">{r.baseMean}</td><td class="num">{r.lfc}</td><td class="num">{r.shrunk}</td><td class="num">{r.padj === null ? "not tested" : r.padj.toExponential(1)}</td></tr>)}
+        </tbody></table></div>
+        <p class="fix"><b>Instead.</b> Rank and plot with shrunken fold changes (<code>lfcShrink(type = "apeglm")</code>); keep the unshrunken ones with their standard errors for the table.</p>
+      </li>
+      <li id="background">
+        <h2>Enrichment against the wrong background</h2>
+        <p class="what"><b>The mistake.</b> Testing the significant genes against the whole genome instead of the genes that were actually measured.</p>
+        <p class="hit"><b>On airway</b> ({f(m.background.genes)} genes, GO biological process): {f(m.background.terms_tested_bg)} significant terms against the {f(m.background.universe)} tested genes, {f(m.background.terms_genome_bg)} against the genome. Only {f(m.background.shared)} terms are in both; {f(m.background.only_genome)} appear only with the genome background, for example:</p>
+        <ul>{m.background.examples.map((e: any) => <li>{e.Description} <span class="muted small">(adjusted p {e["p.adjust"].toExponential(1)})</span></li>)}</ul>
+        <p class="fix"><b>Instead.</b> A gene that is not expressed in these cells could never have been found, so it does not belong in the background. Use the tested genes (those with an adjusted p-value) as the universe.</p>
+      </li>
+      {m.excel && <li id="excel">
+        <h2>Letting a spreadsheet touch gene names</h2>
+        <p class="what"><b>The mistake.</b> Opening a gene table in Excel and saving it again: gene names like SEPTIN2 (formerly SEPT2) and MARCHF1 (MARCH1) become dates.</p>
+        <p class="hit"><b>In a real GEO file</b> (<code>{m.excel.file}</code>, a human study, {f(m.excel.rows)} rows), {m.excel.n} gene names are dates: {m.excel.examples.join(", ")}, …</p>
+        <p class="fix"><b>Instead.</b> Key every table by a stable identifier (Ensembl or Entrez ID) and add symbols at the end; open text files in Excel only through the import dialog with the gene column set to text.</p>
+      </li>}
+    </ol>
+  </div>
+
+  <style>
+    .mk { list-style: none; padding: 0; margin: 2rem 0 0; counter-reset: mk; }
+    .mk > li { counter-increment: mk; position: relative; padding: 1.4rem 0 1.6rem 3.2rem; border-top: 1px solid var(--line); }
+    .mk > li::before { content: counter(mk, decimal-leading-zero); position: absolute; left: 0; top: 1.55rem; font-family: var(--f-mono); color: var(--accent); font-size: 1rem; }
+    .mk h2 { margin: 0 0 0.6rem; font-size: 1.45rem; }
+    .mk p { margin: 0.5rem 0; }
+    .mk .hit { background: rgba(192, 57, 43, 0.06); border-left: 3px solid var(--up); padding: 0.5rem 0.8rem; border-radius: 0 6px 6px 0; }
+    .mk .fix { background: var(--accent-soft); border-left: 3px solid var(--accent); padding: 0.5rem 0.8rem; border-radius: 0 6px 6px 0; }
+    .mk pre { white-space: pre-wrap; font-size: 0.8rem; margin: 0.4rem 0; }
+  </style>
+</Base>

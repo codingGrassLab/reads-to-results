@@ -1,0 +1,146 @@
+---
+import Base from "../../layouts/Base.astro";
+import { langs, path, type Lang } from "../../i18n/ui";
+import data from "../../data/break.json";
+export const getStaticPaths = () => langs.map((lang) => ({ params: { lang } }));
+const lang = Astro.params.lang as Lang;
+const title = "Break it yourself";
+const description = "Change the design, lose a sample, keep only two donors, swap one label: see what each does to the airway result. Every number is a real DESeq2 run.";
+const samples = [
+  ["SRR1039508", "N61311", "untrt"], ["SRR1039509", "N61311", "trt"], ["SRR1039512", "N052611", "untrt"], ["SRR1039513", "N052611", "trt"],
+  ["SRR1039516", "N080611", "untrt"], ["SRR1039517", "N080611", "trt"], ["SRR1039520", "N061011", "untrt"], ["SRR1039521", "N061011", "trt"],
+];
+---
+<Base lang={lang} title={title} description={description} active="break">
+  <div class="container">
+    <div class="page-head prose">
+      <h1>{title}</h1>
+      <p class="lead">{description}</p>
+      <p class="small muted">The airway experiment: four donors' airway smooth muscle cells, each split into an untreated and a dexamethasone-treated sample. The correct analysis is the first setting below, the one used in the course: <code>~ cell + dex</code> on all eight samples. Change one switch at a time and compare. Each combination was run in R with DESeq2 {data.versions.deseq2}; the gene filter keeps genes with at least 10 counts in as many samples as the smallest group, as the DESeq2 vignette suggests.</p>
+    </div>
+
+    <section class="bk">
+      <div class="bk-controls">
+        <fieldset>
+          <legend>Design</legend>
+          <label><input type="radio" name="design" value="paired" checked /> <b><code>~ cell + dex</code></b> <span>each donor's treated sample against its own untreated one</span></label>
+          <label><input type="radio" name="design" value="unpaired" /> <b><code>~ dex</code></b> <span>ignore which donor a sample came from</span></label>
+        </fieldset>
+        <fieldset>
+          <legend>Samples</legend>
+          <label><input type="radio" name="samples" value="all" checked /> <b>all 8</b> <span>4 treated vs 4 untreated</span></label>
+          <label><input type="radio" name="samples" value="drop1" /> <b>one sample lost</b> <span>SRR1039521 (treated, donor N061011) removed: 3 vs 4</span></label>
+          <label><input type="radio" name="samples" value="n2" /> <b>only two donors</b> <span>N61311 and N052611: 2 vs 2</span></label>
+          <label><input type="radio" name="samples" value="swap" /> <b>one label swapped</b> <span>donor N61311: untreated and treated labels exchanged</span></label>
+        </fieldset>
+        <div class="bk-plate" data-plate aria-label="The eight samples">
+          {samples.map(([run, cell, dex]) => <div class="bk-s" data-run={run} data-dex={dex}><b>{dex === "trt" ? "dex" : "untr"}</b><span>{cell}</span></div>)}
+        </div>
+        <p class="small muted bk-legend"><i class="sw u"></i>untreated <i class="sw t"></i>treated <i class="sw x"></i>removed <i class="sw s"></i>label swapped</p>
+      </div>
+
+      <div class="bk-out">
+        <div class="bk-big"><b data-sig>4,081</b><span>genes at adjusted p &lt; 0.05 <span data-updown></span></span></div>
+        <div class="bk-bar" data-bar></div>
+        <p class="small" data-barlegend></p>
+        <p class="bk-explain" data-explain></p>
+        <pre class="bk-code"><code data-code></code></pre>
+        <h3>The genes the original paper reports</h3>
+        <p class="small muted">Seven well-known glucocorticoid-response genes (Himes et al. 2014). Found = adjusted p &lt; 0.05.</p>
+        <div class="table-wrap"><table><thead><tr><th>gene</th><th class="num">log2 fold change</th><th class="num">adjusted p</th><th>found</th></tr></thead><tbody data-markers></tbody></table></div>
+        <h3>Top 10 genes in this run</h3>
+        <div class="table-wrap"><table><thead><tr><th>gene</th><th class="num">log2 fold change</th><th class="num">adjusted p</th></tr></thead><tbody data-top></tbody></table></div>
+      </div>
+    </section>
+
+    <div class="prose" style="margin-top:2.5rem">
+      <h2>What to take from this</h2>
+      <p>The metadata decide the result. The same counts give 4,081 genes with the right design, about two thirds of that when the donor is ignored, and almost nothing when a single pair of labels is wrong. No amount of care later in the analysis recovers from a wrong sample table, which is why the course checks the sample sheet before anything else, and why a PCA coloured by every metadata column comes before the test.</p>
+      <p>For the full list of common mistakes and what each does to these data, see <a href={path(lang, "mistakes")}>Mistakes</a>.</p>
+    </div>
+  </div>
+
+  <script type="application/json" id="break-data" set:html={JSON.stringify({ grid: data.grid, base: data.base.sig })}></script>
+
+  <style>
+    .bk { display: grid; grid-template-columns: minmax(0, 360px) minmax(0, 1fr); gap: 2rem; align-items: start; margin-top: 1rem; }
+    @media (max-width: 900px) { .bk { grid-template-columns: 1fr; } }
+    .bk-controls { position: sticky; top: calc(var(--header-h) + 12px); }
+    fieldset { border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--surface); padding: 0.6rem 0.9rem 0.8rem; margin: 0 0 1rem; }
+    legend { font-weight: 600; color: var(--ink); padding: 0 0.3rem; }
+    fieldset label { display: grid; grid-template-columns: auto 1fr; gap: 0 0.5rem; padding: 0.35rem 0.3rem; border-radius: 6px; cursor: pointer; font-size: 0.92rem; }
+    fieldset label:hover { background: var(--bg-2); }
+    fieldset label input { grid-row: span 2; margin-top: 0.3rem; }
+    fieldset label span { grid-column: 2; font-size: 0.8rem; color: var(--muted); }
+    .bk-plate { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.35rem; }
+    .bk-s { border-radius: 6px; padding: 0.35rem 0.2rem; text-align: center; font-size: 0.72rem; line-height: 1.2; border: 2px solid transparent; transition: all 0.2s; }
+    .bk-s b { display: block; font-size: 0.8rem; }
+    .bk-s span { color: inherit; opacity: 0.8; }
+    .bk-s[data-dex="untrt"] { background: #e8eef7; color: #2c5fa8; }
+    .bk-s[data-dex="trt"] { background: #f8e6e3; color: #c0392b; }
+    .bk-s.off { background: var(--bg-2) !important; color: var(--dim) !important; text-decoration: line-through; opacity: 0.5; }
+    .bk-s.swap { border-color: var(--warn); }
+    .bk-legend { margin-top: 0.5rem; }
+    .sw { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin: 0 0.25rem 0 0.6rem; vertical-align: middle; }
+    .sw.u { background: #e8eef7; } .sw.t { background: #f8e6e3; } .sw.x { background: var(--bg-2); } .sw.s { border: 2px solid var(--warn); }
+    .bk-big { display: flex; align-items: baseline; gap: 0.8rem; flex-wrap: wrap; }
+    .bk-big b { font-family: var(--f-display); font-size: 3.6rem; font-weight: 500; color: var(--ink); line-height: 1; font-variant-numeric: tabular-nums; }
+    .bk-big > span { color: var(--muted); }
+    .bk-bar { display: flex; height: 22px; border-radius: 6px; overflow: hidden; margin: 1rem 0 0.4rem; background: var(--bg-2); }
+    :global(.bk-bar i) { display: block; height: 100%; transition: width 0.3s; }
+    :global(.bk-bar .kept) { background: var(--accent); } :global(.bk-bar .lost) { background: #e0b4ae; } :global(.bk-bar .new) { background: var(--warn); }
+    :global(.bk-key) { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin: 0 0.3rem 0 0.8rem; vertical-align: middle; }
+    .bk-explain { font-size: 1.02rem; margin: 1rem 0; }
+    .bk-code { font-size: 0.8rem; }
+    .bk-out h3 { margin-top: 1.8rem; }
+    :global(.bk-out td.yes) { color: var(--accent); font-weight: 600; } :global(.bk-out td.no) { color: var(--up); font-weight: 600; }
+  </style>
+
+  <script>
+    const D = JSON.parse(document.getElementById("break-data")!.textContent!);
+    const $ = <T extends Element>(s: string) => document.querySelector<T>(s)!;
+    const fmt = (n: number) => n.toLocaleString("en-US");
+    const pfmt = (p: number | null) => (p === null ? "not tested" : p < 1e-3 ? p.toExponential(1) : p.toFixed(3));
+    const esc = (s: unknown) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;");
+    const removed: Record<string, string[]> = { all: [], drop1: ["SRR1039521"], n2: ["SRR1039516", "SRR1039517", "SRR1039520", "SRR1039521"], swap: [] };
+    const sampleText: Record<string, string> = {
+      all: "All eight samples are used.",
+      drop1: "One treated sample is lost, as happens when a library fails.",
+      n2: "Only two donors are kept, the size of many small studies.",
+      swap: "The untreated and treated labels of donor N61311 are exchanged, as happens with a mix-up in a spreadsheet.",
+    };
+    const designText: Record<string, string> = {
+      paired: "With ~ cell + dex each treated sample is compared with the untreated sample of the same donor, so differences between donors are taken out of the noise.",
+      unpaired: "With ~ dex the donor is ignored: differences between donors stay in the noise, and real treatment effects have to be larger to stand out.",
+    };
+    function show() {
+      const d = (document.querySelector('input[name="design"]:checked') as HTMLInputElement).value;
+      const s = (document.querySelector('input[name="samples"]:checked') as HTMLInputElement).value;
+      const g = D.grid[`${s}_${d}`];
+      $("[data-sig]").textContent = fmt(g.sig);
+      $("[data-updown]").textContent = `(${fmt(g.up)} up, ${fmt(g.down)} down; ${fmt(g.tested)} genes tested)`;
+      const tot = D.base + g.new;   // kept + lost = the correct analysis; new ones on top
+      $("[data-bar]").innerHTML = `<i class="kept" style="width:${(100 * g.kept) / tot}%"></i><i class="new" style="width:${(100 * g.new) / tot}%"></i><i class="lost" style="width:${(100 * g.lost) / tot}%"></i>`;
+      $("[data-barlegend]").innerHTML = `Against the correct analysis (${fmt(D.base)} genes): <span class="bk-key" style="background:var(--accent)"></span>${fmt(g.kept)} still found <span class="bk-key" style="background:#e0b4ae"></span>${fmt(g.lost)} lost <span class="bk-key" style="background:var(--warn)"></span>${fmt(g.new)} new`;
+      const pct = Math.round((100 * g.sig) / D.base);
+      const found = g.markers.filter((m: any) => m.padj !== null && m.padj < 0.05).length;
+      $("[data-explain]").textContent = `${sampleText[s]} ${designText[d]} ${s === "all" && d === "paired" ? "This is the correct analysis." : `Result: ${pct}% of the correct number of genes, ${found} of the 7 known dexamethasone genes found.`}${s === "swap" ? " One wrong pair of labels makes that donor look like it responds in the opposite direction; the model sees disagreement everywhere and almost nothing passes." : ""}`;
+      const keep = ["SRR1039508", "SRR1039509", "SRR1039512", "SRR1039513", "SRR1039516", "SRR1039517", "SRR1039520", "SRR1039521"].filter((r) => !removed[s].includes(r));
+      $("[data-code]").textContent = `${keep.length < 8 ? `keep <- c(${keep.map((r) => `"${r}"`).join(", ")})\ndds <- DESeqDataSetFromMatrix(counts[, keep], coldata[keep, ], design = ${g.formula})` : s === "swap" ? `coldata[c("SRR1039508", "SRR1039509"), "dex"] <- c("trt", "untrt")   # the mistake\ndds <- DESeqDataSetFromMatrix(counts, coldata, design = ${g.formula})` : `dds <- DESeqDataSetFromMatrix(counts, coldata, design = ${g.formula})`}\ndds <- dds[rowSums(counts(dds) >= 10) >= ${g.filter_min}, ]\ndds <- DESeq(dds)\nres <- results(dds, contrast = c("dex", "trt", "untrt"), alpha = 0.05)`;
+      $("[data-markers]").innerHTML = g.markers.map((m: any) => { const ok = m.padj !== null && m.padj < 0.05; return `<tr><td><b>${esc(m.symbol)}</b></td><td class="num">${m.lfc === null ? "–" : m.lfc}</td><td class="num">${pfmt(m.padj)}</td><td class="${ok ? "yes" : "no"}">${ok ? "found" : "missed"}</td></tr>`; }).join("");
+      $("[data-top]").innerHTML = g.top.map((t: any) => `<tr><td><b>${esc(t.symbol ?? t.id)}</b> <span class="muted small">${t.symbol ? esc(t.id) : ""}</span></td><td class="num">${t.lfc}</td><td class="num">${pfmt(t.padj)}</td></tr>`).join("");
+      document.querySelectorAll<HTMLElement>(".bk-s").forEach((el) => {
+        const r = el.dataset.run!;
+        el.classList.toggle("off", removed[s].includes(r));
+        const sw = s === "swap" && (r === "SRR1039508" || r === "SRR1039509");
+        el.classList.toggle("swap", sw);
+        const dex = sw ? (el.dataset.dex === "trt" ? "untrt" : "trt") : el.dataset.dex!;
+        el.querySelector("b")!.textContent = dex === "trt" ? "dex" : "untr";
+        el.style.background = removed[s].includes(r) ? "" : dex === "trt" ? "#f8e6e3" : "#e8eef7";
+        el.style.color = removed[s].includes(r) ? "" : dex === "trt" ? "#c0392b" : "#2c5fa8";
+      });
+    }
+    document.querySelectorAll('input[name="design"], input[name="samples"]').forEach((i) => i.addEventListener("change", show));
+    show();
+  </script>
+</Base>
