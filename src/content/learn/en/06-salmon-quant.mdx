@@ -1,0 +1,155 @@
+---
+title: "Running salmon quant and reading its output"
+description: "The quantification command, every file Salmon writes, and what the real numbers from the airway samples tell you about the library and the run."
+order: 6
+minutes: 25
+---
+import salmon from "../../../data/salmon.json";
+export const a = salmon.SRR1039508;
+export const b = salmon.SRR1039509;
+export const n = (x) => x.toLocaleString("en-US");
+
+## The command
+
+One sample:
+
+```bash
+mkdir -p quant
+salmon quant -i ref/salmon_index -l A \
+  -1 trimmed/SRR1039508_1.fastq.gz -2 trimmed/SRR1039508_2.fastq.gz \
+  --validateMappings --gcBias --seqBias \
+  -p 8 -o quant/SRR1039508
+```
+
+All eight, in a loop:
+
+```bash
+for run in SRR1039508 SRR1039509 SRR1039512 SRR1039513 \
+           SRR1039516 SRR1039517 SRR1039520 SRR1039521; do
+  salmon quant -i ref/salmon_index -l A \
+    -1 trimmed/${run}_1.fastq.gz -2 trimmed/${run}_2.fastq.gz \
+    --validateMappings --gcBias --seqBias -p 8 -o quant/${run}
+done
+```
+
+The options, and why:
+
+- `-l A`: let Salmon detect the **library type** (stranded or not, which mate is sense). Always use `A` unless you have a reason; then check what it detected (below).
+- `--gcBias`: correct for fragments with extreme GC content being under- or over-represented. Recommended by the authors for all bulk RNA-seq; it costs a few extra minutes.
+- `--seqBias`: correct for the random-hexamer priming bias at read starts (the same bias that makes FastQC's "per base sequence content" fail).
+- `--validateMappings`: selective alignment with scoring; the default since Salmon 1.0, harmless to state.
+- `-p 8`: threads. Salmon scales well; use what you have.
+
+Two samples from this dataset were quantified by the `airway` package authors with Salmon {a.salmon_version} against GENCODE v29, with `--validateMappings --gcBias`, and the complete output directories ship with the package. Everything below is read from those files.
+
+## The output directory
+
+```
+quant/SRR1039508/
+├── quant.sf                  the result: one row per transcript
+├── cmd_info.json             the exact command and index used
+├── lib_format_counts.json    the library type and how many fragments fit it
+├── logs/salmon_quant.log     the full run log
+├── libParams/flenDist.txt    fragment-length distribution
+└── aux_info/
+    ├── meta_info.json        run statistics (mapping rate, counts, versions)
+    ├── fld.gz, exp_gc.gz, obs_gc.gz, …   bias model internals
+    └── ambig_info.tsv.gz     per-transcript unique vs ambiguous reads
+```
+
+Read them in this order.
+
+## 1. Did it map? `meta_info.json`
+
+<div class="table-wrap">
+<table>
+<thead><tr><th></th><th class="num">{a.run}</th><th class="num">{b.run}</th></tr></thead>
+<tbody>
+<tr><td>fragments processed</td><td class="num">{n(a.num_processed)}</td><td class="num">{n(b.num_processed)}</td></tr>
+<tr><td>fragments mapped</td><td class="num">{n(a.num_mapped)}</td><td class="num">{n(b.num_mapped)}</td></tr>
+<tr><td><b>mapping rate</b></td><td class="num"><b>{a.percent_mapped}%</b></td><td class="num"><b>{b.percent_mapped}%</b></td></tr>
+<tr><td>discarded: alignment score too low</td><td class="num">{n(a.num_filtered_vm)}</td><td class="num">{n(b.num_filtered_vm)}</td></tr>
+<tr><td>discarded: only dovetail (discordant) mappings</td><td class="num">{n(a.num_dovetail)}</td><td class="num">{n(b.num_dovetail)}</td></tr>
+<tr><td>transcripts in index</td><td class="num">{n(a.num_targets)}</td><td class="num">{n(b.num_targets)}</td></tr>
+<tr><td>equivalence classes</td><td class="num">{n(a.num_eq_classes)}</td><td class="num">{n(b.num_eq_classes)}</td></tr>
+<tr><td>mean fragment length</td><td class="num">{a.fld_mean} bp</td><td class="num">{b.fld_mean} bp</td></tr>
+</tbody>
+</table>
+</div>
+
+A mapping rate of **85 to 95%** is normal for good human or mouse poly-A RNA-seq against a complete transcriptome. Below 70% means something: contamination (check with FastQC's overrepresented sequences), heavy rRNA (use a transcriptome that includes rRNA, or expect it), the wrong species, or a degraded library with many intronic reads. Also compare samples with each other: one sample ten points below the rest is the first sign of a bad library, and you should remember it when you see the PCA.
+
+The mean fragment length ({a.fld_mean} bp here) is estimated from pairs whose two mates map to the same transcript. It should be longer than the read length (these reads are 63 to 126 bp) and typical of the library kit (150 to 300 bp). A very short value means many adapter dimers or read-through.
+
+## 2. What kind of library? `lib_format_counts.json`
+
+Salmon detected `{a.expected_format}` for both samples: **I**nward-facing pairs, **U**nstranded. The evidence is the count of fragments in each orientation:
+
+<div class="table-wrap">
+<table>
+<thead><tr><th>Orientation</th><th class="num">{a.run}</th><th class="num">{b.run}</th></tr></thead>
+<tbody>
+<tr><td>ISF (first mate on the sense strand)</td><td class="num">{n(a.ISF)}</td><td class="num">{n(b.ISF)}</td></tr>
+<tr><td>ISR (first mate on the antisense strand)</td><td class="num">{n(a.ISR)}</td><td class="num">{n(b.ISR)}</td></tr>
+<tr><td>strand mapping bias</td><td class="num">{a.strand_bias}</td><td class="num">{b.strand_bias}</td></tr>
+</tbody>
+</table>
+</div>
+
+ISF and ISR are equal to within 0.3%, so the library carries no strand information: unstranded. A stranded dUTP library (TruSeq Stranded and most modern kits) would show almost all fragments as `ISR` and a strand bias near 0 or 1; Salmon would then report `ISR` and count only compatible fragments. **This file replaces guessing.** Write the detected type in your methods, and if two samples in one experiment differ, stop and find out why.
+
+## 3. The result: `quant.sf`
+
+The first rows of the real file:
+
+<div class="table-wrap">
+<table>
+<thead><tr><th>Name</th><th class="num">Length</th><th class="num">EffectiveLength</th><th class="num">TPM</th><th class="num">NumReads</th></tr></thead>
+<tbody>{a.head.map((r) => <tr><td><code>{r.Name}</code></td><td class="num">{r.Length}</td><td class="num">{r.EffectiveLength.toFixed(1)}</td><td class="num">{r.TPM.toFixed(3)}</td><td class="num">{r.NumReads.toFixed(1)}</td></tr>)}</tbody>
+</table>
+</div>
+
+- **Name**: transcript ID with version. {n(a.transcripts)} rows, one per transcript in the index; {n(a.transcripts_with_reads)} of them received any reads in this sample.
+- **Length**: transcript length in bases.
+- **EffectiveLength**: the length corrected for the fact that a fragment of ~{Math.round(a.fld_mean)} bp cannot start in the last ~{Math.round(a.fld_mean)} bases, and for GC bias. Salmon uses this, not Length, for TPM.
+- **TPM**: transcripts per million, an abundance that sums to one million over the file. Use it to compare transcripts *within* a sample. Do not use it for differential expression.
+- **NumReads**: the estimated number of fragments from this transcript, with decimals because of EM sharing. Summed over the file it equals the mapped fragments ({n(a.sum_numreads)}). **This is what goes into DESeq2**, after summing to genes (next lesson).
+
+The eight most abundant transcripts in {a.run} by NumReads:
+
+<div class="table-wrap">
+<table>
+<thead><tr><th>Name</th><th class="num">Length</th><th class="num">TPM</th><th class="num">NumReads</th></tr></thead>
+<tbody>{a.top.map((r) => <tr><td><code>{r.Name}</code></td><td class="num">{r.Length}</td><td class="num">{n(r.TPM)}</td><td class="num">{n(r.NumReads)}</td></tr>)}</tbody>
+</table>
+</div>
+
+A handful of transcripts take hundreds of thousands of reads each: in most cell types these are mitochondrial, ribosomal-protein and cytoskeletal transcripts. This is normal, and it is also why normalization by the median of ratios (lesson 8) rather than by total reads matters: a few transcripts dominate the total.
+
+## 4. The log
+
+`logs/salmon_quant.log` records everything, including warnings you should not ignore. Lines to look for:
+
+```
+[info] Automatically detected most likely library type as IU
+[info] Computed 516,269 rich equivalence classes for further processing
+[info] Counted 21,100,805 total reads in the equivalence classes
+[info] Mapping rate = 92.0005%
+[info] iteration = 500 | max rel diff. = 4.50414
+```
+
+A warning such as `Detected a *potential* strand bias` or `only X fragments were assigned` means the detected library type does not fit the data; a `--libType` mismatch, in the extreme, silently discards most of the reads.
+
+## MultiQC
+
+MultiQC reads `meta_info.json` and `lib_format_counts.json` for all samples. After all eight samples:
+
+```bash
+multiqc --outdir qc quant qc
+```
+
+gives a table of mapping rates and library types next to the FastQC and fastp results. That one table is your quality-control summary for the methods section.
+
+<div class="task">
+<strong>Exercise.</strong> Compute the fraction of processed fragments that was discarded for low alignment score in each sample. Is it the same in both? Then: if Salmon had been run with <code>-l ISR</code> on this library, roughly what mapping rate would you expect, and why?
+</div>

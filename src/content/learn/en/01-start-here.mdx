@@ -1,0 +1,69 @@
+---
+title: "Start here: what RNA-seq measures, and the experiment we will follow"
+description: "What an RNA-seq experiment actually counts, why the airway dataset is a good one to learn on, and what you will have at the end."
+order: 1
+minutes: 10
+---
+import samples from "../../../data/samples.json";
+import summary from "../../../data/summary.json";
+import Stats from "../../../components/Stats.astro";
+
+## What RNA-seq measures
+
+A cell makes thousands of different messenger RNAs at once. RNA-seq takes all of them, breaks them into short fragments, reads the sequence of each fragment, and then works out which gene each fragment came from. At the end you have, for every gene, a **count**: how many fragments were seen from that gene in that sample.
+
+That is the whole measurement. Everything later, fold changes, p-values, pathways, is arithmetic on a table of counts.
+
+Two things follow from this, and they shape every step of the analysis:
+
+- **Counts are relative.** If you sequence one sample twice as deep, every gene gets about twice the count. So raw counts from two samples cannot be compared until you correct for how much was sequenced. That correction is called *normalization* (lesson 7).
+- **Counts are noisy in a specific way.** Sampling fragments is like drawing balls from an urn: low counts are proportionally much noisier than high counts, and biological replicates add extra variability on top. Methods like DESeq2 exist because ordinary t-tests handle this badly.
+
+## The experiment
+
+We follow one real experiment all the way through. Himes and colleagues (2014) took **airway smooth muscle cells from four people** and, for each, treated one culture with the glucocorticoid **dexamethasone** for 18 hours and left another culture untreated. Glucocorticoids are the standard anti-inflammatory drugs for asthma, and the question was which genes they switch on and off in these cells.
+
+That gives {samples.length} samples:
+
+<div class="table-wrap">
+<table>
+<thead><tr><th>SRA run</th><th>Cell line (donor)</th><th>Treatment</th><th class="num">Read pairs</th></tr></thead>
+<tbody>
+{samples.map((s) => <tr><td><code>{s.run}</code></td><td>{s.cell}</td><td>{s.dex === "trt" ? "dexamethasone" : "untreated"}</td><td class="num">{s.libsize.toLocaleString("en-US")}</td></tr>)}
+</tbody>
+</table>
+</div>
+
+Notice the design. Each donor contributes one treated and one untreated sample. This is a **paired design**: when we ask "what does dexamethasone do?", we can compare each treated sample with its own donor's untreated sample, and differences between donors cancel out. We will tell DESeq2 about this with the formula `~ cell + dex`.
+
+<div class="note">
+<strong>Why this dataset?</strong> It is small enough to run on a laptop, the signal is strong and biologically well understood (glucocorticoid responses are textbook material), and it ships with Bioconductor as the <code>airway</code> package, so anyone can reproduce every number on this site. It is also the dataset used in the official DESeq2 workflow, so what you learn here transfers directly to the documentation.
+</div>
+
+## What you will produce
+
+By lesson 10 you will have, from these eight samples:
+
+<Stats items={[
+  { value: summary.genes_tested, label: "genes tested" },
+  { value: summary.sig_005, label: "genes changed (adjusted p below 0.05)" },
+  { value: summary.sig_005_lfc1, label: "of those, changed more than two-fold" },
+]} />
+
+and a list of biological processes those genes are enriched in. More importantly, you will know what each of those numbers depends on, and which of them you should trust.
+
+## How the lessons are organised
+
+| Lessons | Stage | What runs where |
+|---|---|---|
+| 2 | Setting up software | your computer |
+| 3 to 4 | Raw reads and quality control | command line (Linux or WSL); we show commands and real outputs |
+| 5 to 6 | Quantification with Salmon | command line; the real Salmon output files for two samples |
+| 7 to 10 | Transcripts to genes, DESeq2, plots, enrichment | R; every result on this site comes from this code |
+| 11 | Your own project | a checklist |
+
+Lessons 3 to 6 work with files that are several gigabytes; we show the commands and the real file contents, including the complete Salmon output that ships with the `airway` package for two samples. Lessons 7 to 10 are fully reproduced: the same R script that wrote this page's numbers is on the [data page](../../data/), and a notebook lets you run it in Google Colab.
+
+<div class="task">
+<strong>Before moving on.</strong> Look at the table above and answer: if you compared the four treated samples with the four untreated samples while <em>ignoring</em> which donor they came from, what kind of variation would get mixed into the comparison? (Lesson 8 shows what the formula <code>~ cell + dex</code> does about it.)
+</div>

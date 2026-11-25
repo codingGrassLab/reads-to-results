@@ -1,0 +1,144 @@
+---
+title: "From transcripts to genes: tximport"
+description: "Turn eight quant.sf files into one gene-level count matrix in R, the right way, and understand what tximport does that a plain sum would not."
+order: 7
+minutes: 20
+---
+import salmon from "../../../data/salmon.json";
+import txi from "../../../data/tximport.json";
+import head from "../../../data/counts_head.json";
+export const n = (x) => x.toLocaleString("en-US");
+import CountTable from "../../../components/CountTable.astro";
+export const a = salmon.SRR1039508;
+
+## The target: one matrix
+
+Everything downstream wants a single table: **genes in rows, samples in columns, one number per cell**, the fragments assigned to that gene in that sample. Salmon gives you {a.transcripts.toLocaleString("en-US")} transcripts per sample; for gene-level differential expression you need to sum the isoforms of each gene, for all samples, into one object. `tximport` does this.
+
+## A transcript-to-gene table
+
+You need a two-column table: transcript ID, gene ID. Make it from the GTF of the **same annotation release** you indexed:
+
+```r
+library(rtracklayer)
+gtf <- import("ref/gencode.v47.annotation.gtf.gz")
+tx <- gtf[gtf$type == "transcript"]
+tx2gene <- data.frame(TXNAME = tx$transcript_id, GENEID = tx$gene_id)
+write.csv(tx2gene, "ref/tx2gene.csv", row.names = FALSE)
+head(tx2gene)
+```
+
+```
+             TXNAME             GENEID
+1 ENST00000456328.2 ENSG00000290825.1
+2 ENST00000450305.2 ENSG00000223972.6
+...
+```
+
+Alternatively, the `tximeta` package recognises the index you used (through its checksum) and fetches the matching annotation for you; it is a good choice when the index was built from a standard GENCODE or Ensembl release.
+
+## The sample table
+
+A CSV you write by hand, one row per sample, is the single most important file in the project. For airway:
+
+```
+run,cell,dex
+SRR1039508,N61311,untrt
+SRR1039509,N61311,trt
+SRR1039512,N052611,untrt
+SRR1039513,N052611,trt
+SRR1039516,N080611,untrt
+SRR1039517,N080611,trt
+SRR1039520,N061011,untrt
+SRR1039521,N061011,trt
+```
+
+Check it twice. If a row is wrong here, every result is wrong and nothing downstream will warn you.
+
+## Import
+
+```r
+library(tximport)
+samples <- read.csv("samples.csv")
+files <- file.path("quant", samples$run, "quant.sf")
+names(files) <- samples$run
+stopifnot(all(file.exists(files)))
+
+tx2gene <- read.csv("ref/tx2gene.csv")
+txi <- tximport(files, type = "salmon", tx2gene = tx2gene, ignoreTxVersion = TRUE)
+names(txi)
+```
+
+```
+[1] "abundance"           "counts"              "length"              "countsFromAbundance"
+```
+
+`txi$counts` is the gene-by-sample count matrix: transcript `NumReads` summed per gene. `txi$abundance` is TPM summed per gene. `txi$length` is, for each gene and each sample, the **average transcript length weighted by abundance**, and this is the piece a plain sum would miss.
+
+`ignoreTxVersion = TRUE` strips the `.2` from `ENST00000456328.2` before matching, so a minor version difference between the FASTA and the GTF does not drop transcripts. If you see `transcripts missing from tx2gene`, the two files are from different releases; fix that rather than ignoring it.
+
+## Why the length matrix matters
+
+Suppose a gene has a long isoform and a short one, and treatment shifts usage from the long to the short one without changing the number of molecules. The short isoform yields fewer fragments per molecule, so the gene's count falls, and a naive analysis reports the gene as down-regulated. `tximport` passes the per-sample effective lengths to DESeq2 as an **offset**, so the model knows that the same count means more molecules when the transcripts are shorter. This correction is what makes the Salmon route statistically better than counting from alignments; it is why you should use `DESeqDataSetFromTximport` rather than extracting `txi$counts` and rounding it yourself.
+
+## The real import, on the two shipped samples
+
+We ran exactly this on the two Salmon quantifications that ship with `airway`, with a transcript-to-gene table built from the GENCODE v29 GTF (the release the authors indexed). What comes out:
+
+<div class="table-wrap">
+<table>
+<thead><tr><th></th><th class="num">{txi.runs[0]}</th><th class="num">{txi.runs[1]}</th></tr></thead>
+<tbody>
+<tr><td>transcripts in tx2gene</td><td class="num" colspan="2">{n(txi.n_transcripts_in)}</td></tr>
+<tr><td>genes in <code>txi$counts</code></td><td class="num" colspan="2">{n(txi.n_genes)}</td></tr>
+<tr><td>genes with any counts</td><td class="num">{n(txi.genes_with_counts[0])}</td><td class="num">{n(txi.genes_with_counts[1])}</td></tr>
+<tr><td>sum of counts</td><td class="num">{n(txi.total_counts[0])}</td><td class="num">{n(txi.total_counts[1])}</td></tr>
+</tbody>
+</table>
+</div>
+
+The column sums equal the mapped fragments from lesson 6 ({n(a.num_mapped)} and {n(salmon.SRR1039509.num_mapped)}): summing to genes loses nothing. A few genes, with the three matrices side by side:
+
+<div class="table-wrap">
+<table>
+<thead><tr><th>Gene</th><th></th><th class="num">counts, untrt</th><th class="num">counts, dex</th><th class="num">TPM, untrt</th><th class="num">TPM, dex</th><th class="num">length, untrt</th><th class="num">length, dex</th></tr></thead>
+<tbody>{txi.pick.map((g) => <tr><td><code>{g.gene_id}</code></td><td>{g.symbol}</td><td class="num">{n(g.counts[0])}</td><td class="num">{n(g.counts[1])}</td><td class="num">{g.abundance[0]}</td><td class="num">{g.abundance[1]}</td><td class="num">{n(g.length[0])}</td><td class="num">{n(g.length[1])}</td></tr>)}</tbody>
+</table>
+</div>
+
+Three things to see here. CRISPLD2, SPARCL1 and DUSP1, the genes the paper is about, are already visibly up in the treated sample of this one donor, before any statistics. The `length` column differs slightly between the two samples for the same gene: that is the isoform-usage effect described above, and it is what the offset carries into DESeq2. And TNMD is zero in both, as it was in the authors' matrix.
+
+These Salmon-based counts are also a check on the authors' STAR-based matrix used in the next lessons: TSPAN6 is {n(txi.pick[4].counts[0])} and {n(txi.pick[4].counts[1])} here against {n(head.counts[0][0])} and {n(head.counts[0][1])} there; ANGPTL7 is {txi.pick[1].counts[0]} and {txi.pick[1].counts[1]} by both methods. Two different quantifiers, two different annotation releases, the same answer to within a few percent. That is what a robust count looks like.
+
+## Into DESeq2
+
+```r
+library(DESeq2)
+samples$dex <- relevel(factor(samples$dex), "untrt")
+dds <- DESeqDataSetFromTximport(txi, colData = samples, design = ~ cell + dex)
+dds
+```
+
+```
+class: DESeqDataSet
+dim: 62700 8
+...
+```
+
+From here the analysis is the one in the next lesson. For the airway data, two of the eight Salmon runs ship with the Bioconductor package, which is enough to show every file and number in lesson 6, but not enough samples for the differential test. The full count matrix for all eight samples, produced by the dataset's authors, is what the next lessons use. Its first rows:
+
+<CountTable genes={head.genes} samples={head.samples} counts={head.counts} />
+
+It has **{head.n_genes.toLocaleString("en-US")} genes**, of which **{head.n_zero.toLocaleString("en-US")}** have zero counts in every sample. `ENSG00000000005` (TNMD, tenomodulin) is a tendon gene that airway muscle cells do not express; its zeros are correct, not missing data.
+
+<div class="note">
+<strong>If you quantified with Salmon yourself</strong>, your <code>txi$counts</code> plays exactly the role of this matrix, and <code>DESeqDataSetFromTximport</code> replaces the <code>DESeqDataSet(se, …)</code> line at the start of the next lesson. Nothing else changes.
+</div>
+
+## What a count is not
+
+A count of 500 for gene A and 1,000 for gene B in the same sample does **not** mean B is expressed twice as much: longer genes produce more fragments. Counts are comparable **across samples for the same gene** (after normalization), which is all differential expression needs. For within-sample comparisons between genes, use `txi$abundance` (TPM). Never feed TPM to DESeq2.
+
+<div class="task">
+<strong>Exercise.</strong> Run <code>tximport</code> once more with <code>countsFromAbundance = "lengthScaledTPM"</code> and compare <code>txi$counts</code> for a few genes. Read the tximport vignette to find out when that option is the right one (hint: for tools that cannot take an offset, such as limma-voom).
+</div>

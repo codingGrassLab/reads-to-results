@@ -1,0 +1,150 @@
+---
+title: "Differential expression with DESeq2"
+description: "Build the dataset, filter, run DESeq2 with a paired design, read the results table, and shrink fold changes. Every number here is from the real run."
+order: 8
+minutes: 30
+---
+import summary from "../../../data/summary.json";
+import top from "../../../data/top_genes.json";
+import gene from "../../../data/gene_counts.json";
+import Stats from "../../../components/Stats.astro";
+
+## Load the data
+
+The `airway` package holds the full count matrix and the sample table as one object. Everything in this lesson starts from it (with your own Salmon output, `dds` comes from `DESeqDataSetFromTximport` as in lesson 7, and the rest is identical):
+
+```r
+library(airway); library(DESeq2)
+data(airway)
+se <- airway
+se$dex <- relevel(se$dex, "untrt")     # make "untreated" the reference level
+colData(se)[, c("cell", "dex")]
+```
+
+`relevel` matters. DESeq2 reports fold changes of the *other* levels against the reference, so with `untrt` as reference, a positive log2 fold change means "higher with dexamethasone". Without this line R uses alphabetical order, `trt` would be the reference, and every sign would be flipped.
+
+## The design
+
+```r
+dds <- DESeqDataSet(se, design = ~ cell + dex)
+```
+
+`~ cell + dex` says: model each gene's expression as a baseline that depends on the cell line, plus an effect of dexamethasone. Because every cell line contributes one treated and one untreated sample, the `cell` term absorbs donor-to-donor differences, and the `dex` term is estimated *within* donors. This is the paired analysis from lesson 1. The variable you want to test goes **last** in the formula.
+
+If you had, say, two groups of unrelated people, the design would simply be `~ condition`.
+
+## Filter genes that cannot be tested
+
+Of the {summary.genes_in_matrix.toLocaleString("en-US")} genes, most have almost no counts. They cannot show a difference, they slow things down, and they make multiple-testing correction harsher. Keep genes with at least 10 counts in at least 4 samples (the size of the smallest group):
+
+```r
+keep <- rowSums(counts(dds) >= 10) >= 4
+dds <- dds[keep, ]
+nrow(dds)
+```
+
+<Stats items={[
+  { value: summary.genes_in_matrix, label: "genes in the matrix" },
+  { value: summary.genes_after_filter, label: "after the filter" },
+]} />
+
+This is the standard filter from the DESeq2 vignette. Results are not sensitive to the exact threshold, but **filter before `DESeq()`**, not after looking at p-values.
+
+## Run it
+
+```r
+dds <- DESeq(dds)
+```
+
+One function, three steps, each printed as it runs:
+
+1. **estimating size factors**: one number per sample that corrects for sequencing depth and composition (the median-of-ratios method). The size factors here range from {Math.min(...Object.values(summary.size_factors)).toFixed(2)} to {Math.max(...Object.values(summary.size_factors)).toFixed(2)}; sample SRR1039513, with the smallest library, gets the smallest factor. The [normalization page](../../read/normalization/) shows what this does.
+2. **estimating dispersions**: for each gene, how much biological variability there is beyond Poisson noise. With only four pairs, per-gene estimates are unreliable, so DESeq2 fits a trend across genes and shrinks each gene's estimate towards it. The [dispersion page](../../read/dispersion/) shows this.
+3. **fitting the model and testing**: a negative binomial GLM per gene and a Wald test for the `dex` coefficient.
+
+## The results table
+
+```r
+res <- results(dds, contrast = c("dex", "trt", "untrt"), alpha = 0.05)
+summary(res)
+```
+
+`contrast = c("dex", "trt", "untrt")` states exactly what is compared; `alpha = 0.05` tells DESeq2 which adjusted-p threshold you will use, so that its independent filtering is tuned for it. The summary:
+
+<Stats items={[
+  { value: summary.genes_tested, label: "genes with an adjusted p-value" },
+  { value: summary.up_005, label: "up with dexamethasone (padj below 0.05)" },
+  { value: summary.down_005, label: "down with dexamethasone" },
+  { value: summary.independent_filtered, label: "removed by independent filtering (padj = NA)" },
+]} />
+
+So **{summary.sig_005.toLocaleString("en-US")} genes** change at an adjusted p below 0.05. That is a lot, about a quarter of tested genes, and it is real: glucocorticoids reprogram these cells broadly, and a paired design with four donors has good power.
+
+Look at the top of the table, sorted by adjusted p-value:
+
+```r
+library(org.Hs.eg.db)
+res$symbol <- mapIds(org.Hs.eg.db, rownames(res), "SYMBOL", "ENSEMBL")
+head(res[order(res$padj), ], 10)
+```
+
+<div class="table-wrap">
+<table>
+<thead><tr><th>Gene</th><th>Symbol</th><th class="num">baseMean</th><th class="num">log2FoldChange</th><th class="num">pvalue</th><th class="num">padj</th></tr></thead>
+<tbody>
+{top.slice(0, 10).map((g) => <tr><td><code>{g.gene_id}</code></td><td>{g.symbol}</td><td class="num">{g.baseMean.toLocaleString("en-US")}</td><td class="num" style={`color:${g.log2FoldChange > 0 ? "var(--up)" : "var(--down)"}`}>{g.log2FoldChange > 0 ? "+" : ""}{g.log2FoldChange.toFixed(2)}</td><td class="num">{g.pvalue.toExponential(1)}</td><td class="num">{g.padj.toExponential(1)}</td></tr>)}
+</tbody>
+</table>
+</div>
+
+The columns:
+
+- **baseMean**: mean of normalized counts across all samples. A gene with baseMean 5 and one with 5,000 can have the same fold change, but you trust the second much more.
+- **log2FoldChange**: log2 of (treated / untreated). +1 means doubled, +2 means four times, −1 means halved. SPARCL1 at +{top[1].log2FoldChange.toFixed(1)} is up about {Math.round(2 ** top[1].log2FoldChange)}-fold. The [fold-change page](../../read/log2-fold-change/) goes deeper.
+- **lfcSE**: the standard error of that estimate.
+- **stat**: the Wald statistic, log2FoldChange divided by lfcSE.
+- **pvalue**: the probability of a statistic this extreme if the gene did not change.
+- **padj**: the p-value adjusted for testing {summary.genes_tested.toLocaleString("en-US")} genes at once (Benjamini–Hochberg). **This is the column to use.** With raw p below 0.05 you would call {summary.raw_p_005.toLocaleString("en-US")} genes, and roughly 5% of {summary.genes_tested.toLocaleString("en-US")}, about {Math.round(summary.genes_tested * 0.05)}, would be expected by chance alone. The [p-value page](../../read/pvalue-vs-padj/) shows why.
+
+## One gene, by hand
+
+The paper this dataset comes from is about **CRISPLD2**. Its normalized counts:
+
+<div class="table-wrap">
+<table>
+<thead><tr><th>Sample</th><th>Cell line</th><th>Treatment</th><th class="num">Normalized count</th></tr></thead>
+<tbody>{gene.points.map((p) => <tr><td><code>{p.run}</code></td><td>{p.cell}</td><td>{p.dex === "trt" ? "dex" : "untreated"}</td><td class="num">{p.count.toLocaleString("en-US")}</td></tr>)}</tbody>
+</table>
+</div>
+
+DESeq2 reports log2FoldChange = {gene.result.log2FoldChange.toFixed(2)} (about {Math.round(2 ** gene.result.log2FoldChange * 10) / 10}-fold), lfcSE = {gene.result.lfcSE}, padj = {gene.result.padj.toExponential(1)}. Check it roughly: within each donor the treated count is 4 to 8 times the untreated one. The estimate is a weighted average of those four ratios on the log scale, and the small standard error reflects that all four donors agree in direction.
+
+## Shrinking fold changes
+
+Raw log2 fold changes for low-count genes are noisy: a gene with 3 counts against 30 shows "+3.3" but could easily be +1 or +5. For ranking genes and for plots, shrink the estimates toward zero in a way that leaves well-measured genes alone:
+
+```r
+library(apeglm)
+resLFC <- lfcShrink(dds, coef = "dex_trt_vs_untrt", type = "apeglm")
+```
+
+For CRISPLD2 the shrunken value is {gene.result.shrunk_log2FoldChange.toFixed(2)} against {gene.result.log2FoldChange.toFixed(2)} unshrunk: almost no change, because the gene is well measured. For noisy genes the difference is large. Use **shrunken values for plots and ranking**, and report the unshrunken estimate with its confidence interval when you quote a single gene. The MA plot page shows the two side by side.
+
+<div class="warn">
+<strong>What NOT to do.</strong> (1) Do not run DESeq2 on normalized counts, TPM or FPKM; it needs the raw integers. (2) Do not filter by raw p-value. (3) Do not remove the <code>cell</code> term to "get more significant genes": without it, donor differences inflate the variance and you lose power, and the model is wrong for the design. (4) Do not test with <code>~ dex</code> on a subset of samples and compare with another subset; use contrasts within one model instead.
+</div>
+
+## Save everything
+
+```r
+res_df <- as.data.frame(res[order(res$padj), ])
+res_df$shrunk_log2FoldChange <- resLFC$log2FoldChange[match(rownames(res_df), rownames(resLFC))]
+write.csv(res_df, "results/airway_deseq2_results.csv")
+saveRDS(dds, "results/dds.rds")
+```
+
+The exact file produced by this code is on the [data page](../../data/).
+
+<div class="task">
+<strong>Exercise.</strong> Re-run <code>results()</code> with <code>alpha = 0.1</code>. How many genes are now significant at padj below 0.1? (Our run: {summary.sig_01.toLocaleString("en-US")}.) Then explain in one sentence why this number is larger than the count at 0.05 by more than you would expect from the threshold alone. Hint: independent filtering.
+</div>

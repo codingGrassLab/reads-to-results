@@ -1,0 +1,82 @@
+---
+title: "From a gene list to biology: enrichment analysis"
+description: "Test whether the changed genes are concentrated in known biological processes with clusterProfiler, and learn why enrichment results need more scepticism than any other step."
+order: 10
+minutes: 20
+---
+import go from "../../../data/go.json";
+import summary from "../../../data/summary.json";
+import Figure from "../../../components/Figure.astro";
+
+## The question
+
+{summary.sig_005.toLocaleString("en-US")} genes changed. Nobody can read a list that long. Enrichment analysis asks: among the changed genes, are some *categories* of genes over-represented compared with what you would expect by chance? The categories come from databases such as Gene Ontology (GO), KEGG or Reactome.
+
+## Over-representation analysis with clusterProfiler
+
+The simplest method is a hypergeometric test per category. Three choices matter more than the software:
+
+1. **Which genes count as "changed"?** We use adjusted p below 0.05 and more than two-fold change: {summary.sig_005_lfc1} genes. A looser list gives broader, vaguer terms.
+2. **What is the background ("universe")?** The genes you *could* have detected: the {summary.genes_tested.toLocaleString("en-US")} tested genes, **not** the whole genome. Using the genome as background makes every tissue-specific category look enriched, because the tissue expresses them and the genome does not.
+3. **Which ontology?** GO Biological Process is the usual starting point.
+
+```r
+library(clusterProfiler); library(org.Hs.eg.db)
+sig  <- rownames(res)[which(res$padj < 0.05 & abs(res$log2FoldChange) > 1)]
+univ <- rownames(res)[!is.na(res$padj)]
+ego <- enrichGO(gene = sig, universe = univ, OrgDb = org.Hs.eg.db,
+                keyType = "ENSEMBL", ont = "BP", pAdjustMethod = "BH",
+                qvalueCutoff = 0.05, readable = TRUE)
+head(as.data.frame(ego))
+dotplot(ego, showCategory = 15)
+```
+
+With these settings, {go.n_terms} GO terms are significant. The top of the table:
+
+<div class="table-wrap">
+<table>
+<thead><tr><th>GO term</th><th>Description</th><th class="num">Genes</th><th class="num">padj</th></tr></thead>
+<tbody>{go.terms.slice(0, 10).map((t) => <tr><td><code>{t.id}</code></td><td>{t.description}</td><td class="num">{t.geneRatio}</td><td class="num">{t.padj.toExponential(1)}</td></tr>)}</tbody>
+</table>
+</div>
+
+<Figure src="/plots/go-dotplot.png" alt="Dot plot of the top enriched GO biological-process terms">
+Dot size: number of changed genes in the term. Colour: adjusted p. `GeneRatio` is changed genes in the term over all changed genes with a GO annotation ({go.terms[0].geneRatio.split("/")[1]} of {go.n_genes} here).
+</Figure>
+
+## Reading this honestly
+
+Look at the top terms: axon guidance, neuron projection, blood circulation, angiogenesis, muscle system process, extracellular matrix organization. These are airway *smooth muscle* cells treated with a steroid. Do they grow axons? No. What you are seeing:
+
+- **Shared genes.** Axon guidance and angiogenesis use the same molecules (semaphorins, ephrins, netrins, VEGF). The genes are real; the "axon" label reflects where the molecules were first studied. The informative reading is "cell guidance and adhesion signalling changed", not "neurons".
+- **Redundant terms.** `axon guidance` and `neuron projection guidance` have the same {go.terms[0].count} genes. GO is a hierarchy; a hit at one level appears at every level above it. `clusterProfiler::simplify()` removes some of this.
+- **The expected biology is there** but lower down: extracellular matrix organization, cell surface receptor tyrosine kinase signalling, regulation of ion transport. Glucocorticoids in smooth muscle are known to affect contractility and matrix, which matches.
+- **What is missing.** Classic "response to glucocorticoid" terms do not top the list, because the response genes (FKBP5, TSC22D3, PER1, KLF15, DUSP1) are few and the term is small. Over-representation favours big categories.
+
+<div class="warn">
+<strong>Enrichment results are suggestions, not findings.</strong> They depend on an arbitrary cutoff, on the quality of annotations (neuron biology is annotated far more densely than airway biology), and on the background you chose. Report them as "genes were enriched in terms related to X", then show the actual genes behind the term, and never let a GO term stand in for an experiment.
+</div>
+
+## Gene set enrichment analysis (GSEA)
+
+The cutoff problem can be avoided with GSEA, which ranks *all* tested genes by a statistic and asks whether a set is concentrated at either end:
+
+```r
+ranks <- res$stat; names(ranks) <- rownames(res)
+ranks <- sort(ranks[!is.na(ranks)], decreasing = TRUE)
+gsea <- gseGO(geneList = ranks, OrgDb = org.Hs.eg.db, keyType = "ENSEMBL", ont = "BP")
+```
+
+GSEA also tells you the *direction* of each set (up or down with treatment), which over-representation of a mixed list cannot. For a strong experiment like this one both methods agree on the main themes; when the signal is weak, GSEA is usually the better choice.
+
+## Other databases
+
+- **KEGG** pathways: `enrichKEGG(gene = entrez_ids, organism = "hsa")` needs Entrez IDs (`mapIds(org.Hs.eg.db, ids, "ENTREZID", "ENSEMBL")`).
+- **Reactome**: `ReactomePA::enrichPathway()`.
+- **MSigDB** hallmark sets, via the `msigdbr` package, are 50 well-curated sets that are often the most readable result of all.
+
+Whatever you use, write down the database version. GO changes monthly.
+
+<div class="task">
+<strong>Exercise.</strong> Run <code>enrichGO</code> again <em>without</em> the <code>universe</code> argument. Compare the top ten terms. Which analysis makes muscle-related terms look more significant, and why is that misleading?
+</div>

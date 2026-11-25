@@ -1,0 +1,48 @@
+---
+title: "Dispersion: how DESeq2 estimates variability from few replicates"
+description: "What the dispersion plot shows, why per-gene estimates are shrunk toward a trend, and how to tell a healthy fit from a broken one."
+order: 7
+minutes: 8
+---
+import DispersionPlot from "../../../components/DispersionPlot.astro";
+
+## The plot
+
+<DispersionPlot lang="en">Dispersion estimates for the airway genes. Black: the estimate from each gene's own counts. Red: the trend fitted across all genes. Blue: the final value, each gene's estimate shrunk toward the trend.</DispersionPlot>
+
+## What dispersion is
+
+Counts vary for two reasons. Sampling (Poisson) noise: sequencing is a random draw of fragments, and the variance of a Poisson count equals its mean. And biological variability between replicates, which adds variance proportional to the square of the mean. DESeq2 models the variance as
+
+```
+variance = mean + dispersion × mean²
+```
+
+**Dispersion** is the biological part. A dispersion of 0.01 means a coefficient of variation of about 10% between replicates for highly expressed genes; 0.1 means about 30%. Cultured cell lines have low dispersion; tissue from different patients has high dispersion.
+
+## Why not just estimate it per gene
+
+With four pairs of samples, a per-gene variance estimate is unreliable: by chance some genes look perfectly consistent (dispersion near zero) and some wildly variable. A test using those raw estimates would call false positives among the genes whose replicates happened to agree, and miss true changes among those that happened to disagree.
+
+DESeq2 borrows strength across genes. It fits a trend of dispersion against mean (red): low-count genes tend to have higher apparent dispersion. Then it shrinks each gene's estimate (black) toward the trend to get the final value (blue), by an amount that depends on how far the gene is from the trend and how many replicates there are. Genes far *above* the trend are not shrunk all the way, because they might truly be more variable; a gene far above the trend after shrinkage is a candidate for having an outlier sample.
+
+## What a healthy plot looks like
+
+- The black cloud **decreases with mean** and flattens out at a floor for high counts. That floor, here around 0.01 to 0.02, is the typical biological variability of the system.
+- The red trend runs **through the middle** of the cloud.
+- The blue points sit between black and red, pulled in but following the trend.
+
+## Signs of trouble
+
+- **Trend fit fails** with a warning and DESeq2 falls back to a mean dispersion. Common with very few genes (targeted panels) or after filtering too aggressively. Try `fitType = "local"` or `"mean"`.
+- **A flat cloud with no decrease** at low counts: usually a problem with the input, such as normalized values given as counts.
+- **Floor far above 0.1** in a cell-line experiment: the replicates are not replicates. Check for a batch effect or a mislabelled sample.
+- **Two separated clouds**: often a design that mixes very different sample types without a term for it.
+
+## Why it matters for your results
+
+The dispersion feeds directly into every p-value. A gene whose dispersion is underestimated gets a too-small p-value. This is why experiments with two replicates per group are weak even when fold changes look large: there is almost no information about variability, and the shared trend has to do all the work.
+
+<div class="note">
+<strong>Code.</strong> <code>plotDispEsts(dds)</code> after <code>DESeq()</code>. Access the values with <code>dispersions(dds)</code> and <code>mcols(dds)$dispGeneEst</code>.
+</div>

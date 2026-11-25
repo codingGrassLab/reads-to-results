@@ -1,0 +1,106 @@
+---
+import type { Lang } from "../i18n/ui";
+interface Props { lang: Lang; mode?: "volcano" | "ma" }
+const { lang, mode = "volcano" } = Astro.props;
+const txt = {
+  en: { padj: "adjusted p threshold", lfc: "|log2 fold change| threshold", up: "up", down: "down", ns: "not significant", shrink: "apeglm-shrunken fold changes", loading: "Loading 18,000 genes…", fail: "Could not load the data file.", of: "of", genes: "genes", hover: "Hover or tap a point for the gene.", xlab: "log2 fold change (dex vs untreated)", ylab: "−log10 adjusted p", xma: "mean of normalized counts (log10)", yma: "log2 fold change" },
+  bn: { padj: "adjusted p-এর সীমা", lfc: "|log2 fold change|-এর সীমা", up: "বেড়েছে", down: "কমেছে", ns: "significant নয়", shrink: "apeglm-shrunken fold change", loading: "১৮,০০০ gene লোড হচ্ছে…", fail: "ডেটা ফাইল লোড করা যায়নি।", of: "/", genes: "gene", hover: "gene-এর নাম দেখতে বিন্দুর ওপর মাউস রাখুন বা ট্যাপ করুন।", xlab: "log2 fold change (dex বনাম untreated)", ylab: "−log10 adjusted p", xma: "normalized count-এর গড় (log10)", yma: "log2 fold change" },
+}[lang];
+const id = `v${Math.random().toString(36).slice(2, 8)}`;
+---
+<figure>
+  <div class="controls">
+    <label>{txt.padj} <input type="range" min="0.5" max="4" step="0.1" value="1.3" data-padj aria-label={txt.padj} /> <output data-padj-out>0.05</output></label>
+    <label>{txt.lfc} <input type="range" min="0" max="3" step="0.25" value="1" data-lfc aria-label={txt.lfc} /> <output data-lfc-out>1</output></label>
+    {mode === "ma" && <label><input type="checkbox" data-shrink /> {txt.shrink}</label>}
+  </div>
+  <div class="plot" data-plot="volcano" data-mode={mode} id={id}>
+    <script type="application/json" set:html={JSON.stringify(txt)} />
+    <div class="status">{txt.loading}</div>
+    <div class="legend"><span><i style="background:#c0392b"></i>{txt.up} <output data-n-up>–</output></span><span><i style="background:#2c5fa8"></i>{txt.down} <output data-n-down>–</output></span><span><i style="background:#b7bdbb"></i>{txt.ns} <output data-n-ns>–</output></span></div>
+  </div>
+  <figcaption><slot />{" "}{txt.hover}</figcaption>
+</figure>
+
+<script>
+  import { linear, canvas, canvasAxes, tooltip, readData, colors, fmt } from "../scripts/plot";
+  type Row = [string, string, number, number, number, number, number]; // id, symbol, baseMean, lfc, slfc, pvalue, padj
+  let cache: Promise<Row[]> | null = null;
+  const load = () => (cache ??= fetch("/data/volcano.json").then((r) => r.json()).then((j) => j.rows as Row[]));
+
+  document.querySelectorAll<HTMLElement>('[data-plot="volcano"]').forEach(async (root) => {
+    const txt = readData<Record<string, string>>(root);
+    const fig = root.closest("figure")!;
+    const mode = root.dataset.mode as "volcano" | "ma";
+    const status = root.querySelector<HTMLElement>(".status")!;
+    let rows: Row[];
+    try { rows = await load(); } catch { status.textContent = txt.fail; return; }
+    status.remove();
+
+    const W = 680, H = 460, m = { l: 62, r: 20, t: 16, b: 50 };
+    const { c, ctx } = canvas(root, W, H);
+    root.insertBefore(c, root.querySelector(".legend"));
+    const tip = tooltip(root);
+    const padjIn = fig.querySelector<HTMLInputElement>("[data-padj]")!, lfcIn = fig.querySelector<HTMLInputElement>("[data-lfc]")!;
+    const shrinkIn = fig.querySelector<HTMLInputElement>("[data-shrink]");
+    const outs = { padj: fig.querySelector("[data-padj-out]")!, lfc: fig.querySelector("[data-lfc-out]")!, up: root.querySelector("[data-n-up]")!, down: root.querySelector("[data-n-down]")!, ns: root.querySelector("[data-n-ns]")! };
+
+    const lfcOf = (r: Row) => (shrinkIn?.checked ? r[4] : r[3]);
+    const px = (r: Row) => (mode === "ma" ? Math.log10(r[2]) : lfcOf(r));
+    const py = (r: Row) => (mode === "ma" ? lfcOf(r) : -Math.log10(Math.max(r[6], 1e-300)));
+    const xdom: [number, number] = mode === "ma" ? [-0.1, Math.log10(Math.max(...rows.map((r) => r[2]))) + 0.2] : [-Math.max(...rows.map((r) => Math.abs(r[3]))) - 0.5, Math.max(...rows.map((r) => Math.abs(r[3]))) + 0.5];
+    const ydom: [number, number] = mode === "ma" ? [-6, 6] : [0, Math.min(Math.max(...rows.map(py)) + 5, 310)];
+    const x = linear(xdom, [m.l, W - m.r]), y = linear(ydom, [H - m.b, m.t]);
+    let pts: { r: Row; cx: number; cy: number; cls: "up" | "down" | "ns" }[] = [];
+
+    function draw() {
+      const padjT = Math.pow(10, -parseFloat(padjIn.value)), lfcT = parseFloat(lfcIn.value);
+      outs.padj.textContent = padjT >= 0.001 ? padjT.toFixed(3).replace(/0+$/, "").replace(/\.$/, "") : padjT.toExponential(0);
+      outs.lfc.textContent = lfcT.toString();
+      ctx.clearRect(0, 0, W, H);
+      const xl = mode === "ma" ? txt.xma : txt.xlab, yl = mode === "ma" ? txt.yma : txt.ylab;
+      canvasAxes(ctx, x, y, xl, yl, mode === "ma" ? (v) => (Number.isInteger(v) ? `10^${v}` : "") : fmt);
+      // threshold guides
+      ctx.save(); ctx.setLineDash([4, 4]); ctx.strokeStyle = "#9aa39f"; ctx.lineWidth = 1;
+      if (mode === "volcano") {
+        const yt = y(-Math.log10(padjT)); ctx.beginPath(); ctx.moveTo(x.range[0], yt); ctx.lineTo(x.range[1], yt); ctx.stroke();
+        for (const s of [-1, 1]) { if (lfcT > 0) { ctx.beginPath(); ctx.moveTo(x(s * lfcT), y.range[0]); ctx.lineTo(x(s * lfcT), y.range[1]); ctx.stroke(); } }
+      } else {
+        ctx.beginPath(); ctx.moveTo(x.range[0], y(0)); ctx.lineTo(x.range[1], y(0)); ctx.stroke();
+        for (const s of [-1, 1]) { if (lfcT > 0) { ctx.beginPath(); ctx.moveTo(x.range[0], y(s * lfcT)); ctx.lineTo(x.range[1], y(s * lfcT)); ctx.stroke(); } }
+      }
+      ctx.restore();
+      let nUp = 0, nDown = 0, nNs = 0;
+      pts = rows.map((r) => {
+        const l = lfcOf(r), sig = r[6] < padjT && Math.abs(l) >= lfcT;
+        const cls = sig ? (l > 0 ? "up" : "down") : "ns";
+        if (cls === "up") nUp++; else if (cls === "down") nDown++; else nNs++;
+        return { r, cx: x(px(r)), cy: Math.max(y.range[1], Math.min(y.range[0], y(py(r)))), cls };
+      });
+      // grey first, coloured on top
+      for (const pass of ["ns", "down", "up"] as const) {
+        ctx.fillStyle = pass === "ns" ? colors.ns : pass === "up" ? colors.up : colors.down;
+        ctx.globalAlpha = pass === "ns" ? 0.55 : 0.85;
+        for (const p of pts) if (p.cls === pass) { ctx.beginPath(); ctx.arc(p.cx, p.cy, pass === "ns" ? 1.6 : 2.3, 0, 7); ctx.fill(); }
+      }
+      ctx.globalAlpha = 1;
+      // label the strongest genes
+      const top = pts.filter((p) => p.cls !== "ns").sort((a, b) => a.r[6] - b.r[6]).slice(0, 12);
+      ctx.font = "11px Inter, system-ui, sans-serif"; ctx.fillStyle = colors.ink; ctx.textAlign = "left";
+      for (const p of top) if (p.r[1]) ctx.fillText(p.r[1], p.cx + 5, p.cy - 4);
+      outs.up.textContent = nUp.toLocaleString(); outs.down.textContent = nDown.toLocaleString(); outs.ns.textContent = nNs.toLocaleString();
+    }
+    draw();
+    padjIn.addEventListener("input", draw); lfcIn.addEventListener("input", draw); shrinkIn?.addEventListener("change", draw);
+
+    c.addEventListener("pointermove", (e) => {
+      const b = c.getBoundingClientRect(), sx = W / b.width, mx = (e.clientX - b.left) * sx, my = (e.clientY - b.top) * sx;
+      let best: typeof pts[number] | null = null, bd = 64;
+      for (const p of pts) { const d = (p.cx - mx) ** 2 + (p.cy - my) ** 2; if (d < bd && (p.cls !== "ns" || d < 16)) { bd = d; best = p; } }
+      if (!best) { tip.hide(); return; }
+      const r = best.r;
+      tip.show(`<b>${r[1] || r[0]}</b> <span style="opacity:.7">${r[1] ? r[0] : ""}</span><br>log2FC ${r[3].toFixed(2)} (shrunk ${r[4].toFixed(2)}) · baseMean ${fmt(r[2], 0)}<br>p ${fmt(r[5])} · padj ${fmt(r[6])}`, e.clientX, e.clientY);
+    });
+    c.addEventListener("pointerleave", tip.hide);
+  });
+</script>

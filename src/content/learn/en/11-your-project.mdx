@@ -1,0 +1,61 @@
+---
+title: "Your own project: design, pitfalls and reporting"
+description: "A checklist for planning, running and writing up an RNA-seq differential-expression study, with the mistakes that most often sink one."
+order: 11
+minutes: 15
+---
+
+## Before the samples exist
+
+Most RNA-seq analyses fail at this stage, and no software fixes it later.
+
+- **Replicates.** Three biological replicates per group is the minimum for which DESeq2 can estimate variability; four to six is where results become stable. Technical replicates (the same RNA sequenced twice) do not count. Two groups of two is not an experiment.
+- **Confounding.** If all treated samples are processed on Monday and all controls on Tuesday, "day" and "treatment" cannot be separated. Randomise processing order, and if you must batch, put every condition in every batch. Then include `batch` in the design, like `cell` in this course.
+- **Pairing.** If the same individuals or cell lines give both conditions, as in the airway data, use it: `~ subject + condition`. It is often the difference between finding the effect and not.
+- **Depth.** 20 to 30 million read pairs per sample is enough for gene-level differential expression in human or mouse. Spend extra money on replicates, not depth.
+- **Strandedness.** Ask the sequencing facility which kit was used, and write it down; then confirm it against what Salmon detects (lesson 6).
+- **RNA quality.** RIN above 7 for standard poly-A libraries. Degraded RNA needs rRNA-depletion libraries and a 3′-bias check later.
+
+## While analysing
+
+A short list of the errors seen most often in student analyses, in rough order of frequency:
+
+1. **TPM or normalized values given to DESeq2.** It needs the estimated counts, through `DESeqDataSetFromTximport`. If you pasted `txi$abundance` or a TPM table in, every result is wrong.
+2. **Wrong reference level**, so every fold change has the wrong sign. Always `relevel()`, and check one known gene by hand.
+3. **Raw p-value used for the gene list.** Use `padj`.
+4. **Library type forced wrong** (`-l ISR` on an unstranded library, or the reverse). Mapping rate drops sharply; use `-l A` and read `lib_format_counts.json`.
+5. **Sample sheet misaligned with quant folders.** DESeq2 will happily run with scrambled labels. Check `names(files) == samples$run` and `colnames(txi$counts)` before anything else.
+6. **Batch or donor term omitted** when the design has one.
+7. **Whole-genome background** in enrichment analysis.
+8. **Heatmap of "most variable genes" presented as the treatment response.**
+9. **Looking at results, then changing the filter or the design** until the gene of interest becomes significant. Decide the analysis plan first; if you change it, say so.
+
+## Checks that take five minutes
+
+- PCA (lesson 9): do samples separate by what you intended? Is any sample alone?
+- Mapping rates (lesson 6) and library sizes: similar across samples, within about three-fold.
+- Sex check: XIST and Y-linked genes (RPS4Y1, DDX3Y) should match the recorded sex of each donor. Mismatches reveal sample swaps.
+- One positive-control gene you know must change. For glucocorticoids, FKBP5 or TSC22D3.
+- p-value histogram (see the [p-value page](../../read/pvalue-vs-padj/)): roughly flat with a spike near zero. Other shapes mean the model is wrong.
+
+## Reporting
+
+A methods paragraph needs: data source and accession, read trimming tool and settings, the Salmon version, the transcriptome and annotation release, the index options (decoys, k), the quant options (library type as detected, bias corrections), the tximport version and the transcript-to-gene source, the DESeq2 version, the design formula, the filtering rule, the test and multiple-testing method, the significance threshold, the shrinkage method if used, and the enrichment tool, database version and background. Everything on this site's [data page](../../data/) is an example of exactly this.
+
+Share:
+
+- the raw reads (SRA or ENA deposit; journals require it);
+- the count matrix and sample table;
+- the full results table, not only the significant genes;
+- the script. A script is the only complete description of an analysis.
+
+## Where to go next
+
+- The [DESeq2 vignette](https://bioconductor.org/packages/release/bioc/vignettes/DESeq2/inst/doc/DESeq2.html) covers interactions, time courses, likelihood-ratio tests and more designs than this course.
+- The Bioconductor [rnaseqGene workflow](https://bioconductor.org/packages/release/workflows/html/rnaseqGene.html) is the longer treatment of the same airway dataset.
+- For single-cell RNA-seq, the methods and the pitfalls are different; start from the [OSCA book](https://bioconductor.org/books/release/OSCA/).
+- When a question is not answered by documentation, [Biostars](https://www.biostars.org/) and the [Bioconductor support site](https://support.bioconductor.org/) are where the authors of these tools answer.
+
+<div class="note">
+<strong>You have followed one experiment from FASTQ to pathways.</strong> The next one is yours. Save your commands, check your samples with a PCA before you believe any gene, use the adjusted p-value, and show your replicates.
+</div>

@@ -1,0 +1,8 @@
+node_modules
+dist
+.astro
+analysis/cache
+
+# local packaging and editor files
+*.zip
+.claude/settings.local.json

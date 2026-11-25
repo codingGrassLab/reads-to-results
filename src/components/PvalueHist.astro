@@ -1,0 +1,30 @@
+---
+import hist from "../data/pvalue_hist.json";
+import type { Lang } from "../i18n/ui";
+interface Props { lang: Lang }
+const { lang } = Astro.props;
+const txt = { en: { x: "p-value", y: "number of genes", bin: "genes" }, bn: { x: "p-value", y: "gene-এর সংখ্যা", bin: "gene" } }[lang];
+---
+<figure>
+  <div class="plot" data-plot="phist"><script type="application/json" set:html={JSON.stringify({ ...hist, txt })} /></div>
+  <figcaption><slot /></figcaption>
+</figure>
+<script>
+  import { linear, axes, el, tooltip, readData, colors } from "../scripts/plot";
+  document.querySelectorAll<HTMLElement>('[data-plot="phist"]').forEach((root) => {
+    const d = readData<{ breaks: number[]; counts: number[]; txt: Record<string, string> }>(root);
+    const W = 640, H = 340, m = { l: 64, r: 16, t: 12, b: 48 };
+    const x = linear([0, 1], [m.l, W - m.r]), y = linear([0, Math.max(...d.counts) * 1.05], [H - m.b, m.t]);
+    const svg = el("svg", { viewBox: `0 0 ${W} ${H}`, role: "img" }); const g = el("g"); svg.appendChild(g);
+    axes(g, x, y, { xLabel: d.txt.x, yLabel: d.txt.y, xTicks: [0, 0.2, 0.4, 0.6, 0.8, 1] });
+    const tip = tooltip(root);
+    d.counts.forEach((n, i) => {
+      const b0 = d.breaks[i], b1 = d.breaks[i + 1];
+      const r = el("rect", { x: x(b0) + 1, y: y(n), width: x(b1) - x(b0) - 2, height: y(0) - y(n), fill: i === 0 ? colors.trt : "#9fb8b6", rx: 2 });
+      r.addEventListener("pointermove", (e) => tip.show(`p ∈ [${b0.toFixed(2)}, ${b1.toFixed(2)})<br><b>${n.toLocaleString()}</b> ${d.txt.bin}`, e.clientX, e.clientY));
+      r.addEventListener("pointerleave", tip.hide);
+      g.appendChild(r);
+    });
+    root.appendChild(svg);
+  });
+</script>

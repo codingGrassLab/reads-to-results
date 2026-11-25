@@ -1,0 +1,16 @@
+---
+// A small count matrix, genes down, samples across.
+interface Props { genes: string[]; symbols?: string[]; samples: string[]; counts: number[][]; max?: number; firstHeader?: string }
+const { genes, symbols, samples, counts, max = 12, firstHeader = "gene" } = Astro.props;
+const n = Math.min(max, genes.length);
+---
+<div class="table-wrap">
+  <table>
+    <thead><tr><th>{firstHeader}</th>{symbols && <th></th>}{samples.map((s) => <th class="num">{s}</th>)}</tr></thead>
+    <tbody>
+      {Array.from({ length: n }, (_, i) => (
+        <tr><td><code>{genes[i]}</code></td>{symbols && <td class="muted">{symbols[i]}</td>}{counts[i].map((c) => <td class="num">{c.toLocaleString("en-US")}</td>)}</tr>
+      ))}
+    </tbody>
+  </table>
+</div>

@@ -1,0 +1,34 @@
+---
+import type { Lang } from "../i18n/ui";
+interface Props { lang: Lang }
+const { lang } = Astro.props;
+const txt = { en: { gene: "gene-wise estimate", fit: "fitted trend", final: "final (shrunk toward the trend)", x: "mean of normalized counts (log10)", y: "dispersion (log10)", loading: "Loading…", fail: "Could not load the data file.", sample: "A random 3,000 of the tested genes are shown." }, bn: { gene: "gene-wise estimate", fit: "fitted trend", final: "final (trend-এর দিকে shrink করা)", x: "normalized count-এর গড় (log10)", y: "dispersion (log10)", loading: "লোড হচ্ছে…", fail: "ডেটা ফাইল লোড করা যায়নি।", sample: "tested gene থেকে এলোমেলোভাবে বাছা ৩,০০০টা দেখানো হয়েছে।" } }[lang];
+---
+<figure>
+  <div class="plot" data-plot="disp"><script type="application/json" set:html={JSON.stringify(txt)} /><div class="status">{txt.loading}</div>
+    <div class="legend"><span><i style="background:#15201f"></i>{txt.gene}</span><span><i style="background:#c0392b"></i>{txt.fit}</span><span><i style="background:#2c5fa8"></i>{txt.final}</span></div></div>
+  <figcaption><slot />{" "}{txt.sample}</figcaption>
+</figure>
+<script>
+  import { linear, canvas, canvasAxes, readData } from "../scripts/plot";
+  document.querySelectorAll<HTMLElement>('[data-plot="disp"]').forEach(async (root) => {
+    const txt = readData<Record<string, string>>(root);
+    const status = root.querySelector<HTMLElement>(".status")!;
+    let rows: number[][];
+    try { rows = (await fetch("/data/dispersion.json").then((r) => r.json())).rows; } catch { status.textContent = txt.fail; return; }
+    status.remove();
+    const W = 640, H = 420, m = { l: 62, r: 16, t: 12, b: 50 };
+    const lx = rows.map((r) => Math.log10(r[0])), ly = rows.flatMap((r) => [Math.log10(r[1]), Math.log10(r[3])]);
+    const x = linear([Math.floor(Math.min(...lx)), Math.ceil(Math.max(...lx))], [m.l, W - m.r]);
+    const y = linear([Math.max(-5, Math.floor(Math.min(...ly))), Math.ceil(Math.max(...ly))], [H - m.b, m.t]);
+    const { c, ctx } = canvas(root, W, H); root.insertBefore(c, root.querySelector(".legend"));
+    canvasAxes(ctx, x, y, txt.x, txt.y, (v) => `10^${v}`, (v) => `10^${v}`);
+    ctx.globalAlpha = 0.5; ctx.fillStyle = "#15201f";
+    for (const r of rows) { const yy = Math.log10(r[1]); if (yy < y.domain[0]) continue; ctx.beginPath(); ctx.arc(x(Math.log10(r[0])), y(yy), 1.6, 0, 7); ctx.fill(); }
+    ctx.fillStyle = "#2c5fa8";
+    for (const r of rows) { ctx.beginPath(); ctx.arc(x(Math.log10(r[0])), y(Math.log10(r[3])), 1.6, 0, 7); ctx.fill(); }
+    ctx.globalAlpha = 1; ctx.strokeStyle = "#c0392b"; ctx.lineWidth = 2; ctx.beginPath();
+    rows.slice().sort((a, b) => a[0] - b[0]).forEach((r, i) => { const px = x(Math.log10(r[0])), py = y(Math.log10(r[2])); i ? ctx.lineTo(px, py) : ctx.moveTo(px, py); });
+    ctx.stroke();
+  });
+</script>

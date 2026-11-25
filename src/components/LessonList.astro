@@ -1,0 +1,19 @@
+---
+import { t, path, num, type Lang } from "../i18n/ui";
+import { lessons, split, type Coll } from "../lib/lessons";
+interface Props { coll: Coll; lang: Lang }
+const { coll, lang } = Astro.props;
+const list = await lessons(coll, lang);
+---
+<ol class="lesson-list">
+  {list.map((e) => (
+    <li>
+      <a href={path(lang, coll, split(e.id).slug)}>
+        <span class="n">{num(lang, String(e.data.order).padStart(2, "0"))}</span>
+        <span class="t">{e.data.title}</span>
+        <span class="m">{e.data.minutes ? `${num(lang, e.data.minutes)} ${t(lang, "common.minutes")}` : ""}</span>
+        <span class="d">{e.data.description}</span>
+      </a>
+    </li>
+  ))}
+</ol>

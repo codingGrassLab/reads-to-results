@@ -1,0 +1,50 @@
+---
+title: "p-value and adjusted p-value"
+description: "Why testing 16,000 genes at once changes what a p-value means, what the Benjamini–Hochberg adjustment does, and how to read the p-value histogram as a diagnostic."
+order: 4
+minutes: 10
+---
+import summary from "../../../data/summary.json";
+import hist from "../../../data/pvalue_hist.json";
+import PvalueHist from "../../../components/PvalueHist.astro";
+import Stats from "../../../components/Stats.astro";
+
+## The problem
+
+A p-value of 0.05 means: if this gene did not change, there is a 5% chance of seeing a difference at least this large by chance. That is fine for one test. We ran {summary.genes_tested.toLocaleString("en-US")}. If *no* gene had changed, we would still expect about 5% of them, roughly {Math.round(summary.genes_tested * 0.05).toLocaleString("en-US")} genes, to show p below 0.05.
+
+<Stats items={[
+  { value: summary.raw_p_005, label: "genes with raw p below 0.05" },
+  { value: Math.round(summary.genes_tested * 0.05), label: "expected by chance if nothing changed" },
+  { value: summary.sig_005, label: "genes with adjusted p below 0.05" },
+]} />
+
+The gap between the first and third number, {(summary.raw_p_005 - summary.sig_005).toLocaleString("en-US")} genes, is what the adjustment protects you from. Without it, roughly one in four of your "hits" would be noise, and you could not tell which.
+
+## What the adjustment does
+
+DESeq2 uses the **Benjamini–Hochberg** procedure. It controls the *false discovery rate* (FDR): among the genes you call significant at padj below 0.05, about 5% are expected to be false. Not 5% of all genes, 5% of your list. It sorts the p-values, and the adjusted value of each is roughly `p × (number of tests) / (rank)`, made monotone. The smallest p-values are multiplied by nearly the whole number of tests; p-values near the bottom of the list barely change.
+
+This is different from Bonferroni, which divides the threshold by the number of tests and controls the chance of *any* false positive. Bonferroni at {summary.genes_tested.toLocaleString("en-US")} tests would need p below {(0.05 / summary.genes_tested).toExponential(1)} and would throw away most of the real changes. For a screen whose results you will follow up, FDR is the right quantity.
+
+## Why some genes have padj = NA
+
+{summary.independent_filtered} genes have a p-value but no adjusted p-value. DESeq2 removes genes with very low mean counts *before* adjusting, because they had no chance of being significant anyway and leaving them in would make the adjustment harsher for everyone else. The cutoff is chosen automatically to maximise the number of discoveries at your `alpha`. It is called independent filtering because it uses only the mean count, which is independent of the test statistic under the null. You will also see NA for genes with an outlier count flagged by Cook's distance; the vignette explains how to inspect those.
+
+## The p-value histogram as a diagnostic
+
+<PvalueHist lang="en">Raw p-values of all tested genes in 20 bins. The first bin ({hist.counts[0].toLocaleString("en-US")} genes) is the signal; the flat part is the genes that did not change.</PvalueHist>
+
+This plot is worth making for every analysis. If no gene changed, p-values would be uniform: a flat histogram. Real changes add a spike at zero. The airway data show exactly that: a tall first bar and a flat floor at about {Math.round(hist.counts.slice(10).reduce((a, b) => a + b, 0) / 10).toLocaleString("en-US")} genes per bin. The height of the floor estimates how many genes are truly unchanged, around {(Math.round(hist.counts.slice(10).reduce((a, b) => a + b, 0) / 10) * 20).toLocaleString("en-US")} of {summary.genes_tested.toLocaleString("en-US")}.
+
+Shapes that mean something is wrong:
+
+- **U-shaped**, with a hump near p = 1: usually too many low-count genes, or dispersion overestimated. Filter harder.
+- **Hill in the middle**: the test statistic's null distribution is off, often because an important covariate (batch) is missing from the design.
+- **Flat everywhere**: nothing changed, or the sample labels are scrambled.
+
+## In practice
+
+- Use `padj` for every decision. Report "adjusted p" or "FDR", with the threshold.
+- Do not describe padj = 0.049 as "significant" and padj = 0.051 as "not changed". Both are weak evidence. The threshold is a convention for making lists, not a property of the gene.
+- Do not report `pvalue` for the gene list and `padj` only in the methods. Reviewers check.

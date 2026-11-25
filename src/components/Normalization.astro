@@ -1,0 +1,47 @@
+---
+import norm from "../data/normalization.json";
+import type { Lang } from "../i18n/ui";
+interface Props { lang: Lang }
+const { lang } = Astro.props;
+const txt = { en: { raw: "raw counts", norm: "after size-factor normalization", y: "log2(count + 1)", box: "box: 25th to 75th percentile; line: median; whiskers: 5th and 95th", libsize: "library size", sf: "size factor" }, bn: { raw: "raw count", norm: "size factor দিয়ে normalize করার পর", y: "log2(count + 1)", box: "বাক্স: ২৫ থেকে ৭৫ percentile; রেখা: median; whisker: ৫ আর ৯৫", libsize: "library size", sf: "size factor" } }[lang];
+---
+<figure>
+  <div class="controls" role="radiogroup">
+    <label><input type="radio" name={`norm-${lang}`} value="raw" checked data-norm-mode /> {txt.raw}</label>
+    <label><input type="radio" name={`norm-${lang}`} value="normalized" data-norm-mode /> {txt.norm}</label>
+  </div>
+  <div class="plot" data-plot="norm"><script type="application/json" set:html={JSON.stringify({ ...norm, txt })} /><div class="legend"><span class="muted">{txt.box}</span></div></div>
+  <figcaption><slot /></figcaption>
+</figure>
+<script>
+  import { linear, axes, el, tooltip, readData } from "../scripts/plot";
+  type D = { samples: string[]; quantiles: number[]; raw: number[][]; normalized: number[][]; libsize: number[]; sizeFactor: number[]; txt: Record<string, string> };
+  document.querySelectorAll<HTMLElement>('[data-plot="norm"]').forEach((root) => {
+    const d = readData<D>(root);
+    const fig = root.closest("figure")!;
+    const W = 640, H = 360, m = { l: 60, r: 16, t: 12, b: 70 };
+    const all = [...d.raw.flat(), ...d.normalized.flat()];
+    const x = linear([-0.6, d.samples.length - 0.4], [m.l, W - m.r]), y = linear([0, Math.max(...all) + 0.5], [H - m.b, m.t]);
+    const svg = el("svg", { viewBox: `0 0 ${W} ${H}`, role: "img" }); const g = el("g"); svg.appendChild(g);
+    axes(g, x, y, { yLabel: d.txt.y, xTicks: [] });
+    d.samples.forEach((s, i) => g.appendChild(el("text", { class: "label", x: x(i), y: y.range[0] + 14, "text-anchor": "end", transform: `rotate(-40 ${x(i)} ${y.range[0] + 14})`, style: "font-size:10px" }, s)));
+    const boxes = el("g"); g.appendChild(boxes);
+    const tip = tooltip(root);
+    function draw(mode: "raw" | "normalized") {
+      boxes.replaceChildren();
+      const w = (x(1) - x(0)) * 0.6;
+      d[mode].forEach((q, i) => {
+        const [q05, q25, q50, q75, q95] = q, cx = x(i);
+        boxes.appendChild(el("line", { x1: cx, x2: cx, y1: y(q05), y2: y(q95), stroke: "#5b6764" }));
+        const r = el("rect", { x: cx - w / 2, y: y(q75), width: w, height: y(q25) - y(q75), fill: mode === "raw" ? "#e3e7e4" : "#cfe3e2", stroke: "#5b6764" });
+        r.addEventListener("pointermove", (e) => tip.show(`<b>${d.samples[i]}</b><br>median ${q50.toFixed(2)} · IQR ${q25.toFixed(2)}–${q75.toFixed(2)}<br>${d.txt.libsize} ${d.libsize[i].toLocaleString()} · ${d.txt.sf} ${d.sizeFactor[i].toFixed(3)}`, e.clientX, e.clientY));
+        r.addEventListener("pointerleave", tip.hide);
+        boxes.appendChild(r);
+        boxes.appendChild(el("line", { x1: cx - w / 2, x2: cx + w / 2, y1: y(q50), y2: y(q50), stroke: "#15201f", "stroke-width": 2 }));
+      });
+    }
+    draw("raw");
+    fig.querySelectorAll<HTMLInputElement>("[data-norm-mode]").forEach((r) => r.addEventListener("change", () => draw(r.value as "raw" | "normalized")));
+    root.insertBefore(svg, root.querySelector(".legend"));
+  });
+</script>

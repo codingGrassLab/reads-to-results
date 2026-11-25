@@ -1,0 +1,52 @@
+---
+title: "Normalization: making samples comparable"
+description: "Why raw counts from two samples cannot be compared directly, what DESeq2's size factors do, and the difference between normalizing for depth and normalizing for gene length."
+order: 6
+minutes: 8
+---
+import norm from "../../../data/normalization.json";
+import Normalization from "../../../components/Normalization.astro";
+
+## The plot
+
+<Normalization lang="en">Distribution of log2 counts in each sample, for the {(16139).toLocaleString("en-US")} genes kept after filtering. Switch between raw counts and counts divided by DESeq2's size factors.</Normalization>
+
+## The problem
+
+Sample SRR1039517 has {norm.libsize[5].toLocaleString("en-US")} read pairs; SRR1039513 has {norm.libsize[3].toLocaleString("en-US")}, half as many. A gene with 200 counts in the first and 100 in the second did not change; it was sequenced half as deep. In the raw view, the boxes sit at different heights for exactly this reason. Any comparison across samples has to remove this first.
+
+## What DESeq2 does
+
+`estimateSizeFactors()` computes one number per sample by the **median-of-ratios** method: for each gene, divide its count in a sample by the geometric mean of that gene across all samples; then take the median of those ratios over all genes. The size factors here:
+
+<div class="table-wrap">
+<table>
+<thead><tr><th>Sample</th><th class="num">Read pairs (after filtering)</th><th class="num">Size factor</th></tr></thead>
+<tbody>{norm.samples.map((s, i) => <tr><td><code>{s}</code></td><td class="num">{norm.libsize[i].toLocaleString("en-US")}</td><td class="num">{norm.sizeFactor[i].toFixed(3)}</td></tr>)}</tbody>
+</table>
+</div>
+
+Normalized count = raw count / size factor. Switch the plot to "after normalization": the medians line up. SRR1039513's factor of {norm.sizeFactor[3]} scales its counts *up*; SRR1039517's {norm.sizeFactor[5]} scales down.
+
+Why the median of ratios rather than simply total reads? Because the total is dominated by the few hundred most abundant genes. If a treatment strongly induces a handful of those, every other gene's share of the library shrinks and would look repressed. The median is insensitive to this, as long as most genes do not change, which is the assumption all of RNA-seq normalization rests on.
+
+## Two different kinds of normalization
+
+| Correcting for | Needed when | Method |
+|---|---|---|
+| Sequencing depth and composition | comparing the **same gene across samples** | size factors (DESeq2), TMM (edgeR) |
+| Gene length | comparing **different genes within a sample** | TPM, FPKM |
+
+Differential expression is the first case only. A gene's length is the same in every sample, so it cancels out of the comparison. This is why DESeq2 takes raw counts and why giving it TPM or FPKM is wrong: those values have been divided by length and by library size already, are no longer counts, and break the error model.
+
+The one exception: `tximport` from Salmon passes DESeq2 a per-gene, per-sample correction for isoform-length changes, through an offset. That is handled for you.
+
+## What normalization cannot fix
+
+- **Global shifts.** If a treatment doubles total transcription (some do), every normalization method will make it look as if nothing happened; they assume most genes are unchanged. Spike-in controls are the only way to see it.
+- **Batch effects.** Size factors correct a scalar per sample. A batch that affects some genes more than others needs a term in the design, or a method such as RUVSeq or `limma::removeBatchEffect` for visualisation.
+- **Composition changes** in tissue samples: if treated tissue contains more immune cells, immune genes go "up" without any cell changing its expression. Deconvolution methods, not normalization, address this.
+
+<div class="note">
+<strong>Code.</strong> <code>sizeFactors(dds)</code> after <code>DESeq()</code>, and <code>counts(dds, normalized = TRUE)</code> for the normalized matrix. Use the normalized matrix for plots of single genes; never feed it back into DESeq2.
+</div>

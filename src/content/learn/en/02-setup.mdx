@@ -1,0 +1,89 @@
+---
+title: "Setting up: the command line, conda and R"
+description: "Install the tools used in this course with conda and Bioconductor, on Linux, macOS or Windows through WSL."
+order: 2
+minutes: 15
+---
+import versions from "../../../data/versions.json";
+
+## Two environments
+
+RNA-seq analysis happens in two places. The first half (quality control, trimming, quantification with Salmon) runs **command-line programs** on Linux. The second half (statistics and plots) runs in **R** with Bioconductor packages. You need both.
+
+<div class="warn">
+<strong>Windows users.</strong> The command-line tools in lessons 3 to 6 are built for Linux. Install <a href="https://learn.microsoft.com/windows/wsl/install">WSL (Windows Subsystem for Linux)</a> with Ubuntu, and do everything in that terminal. R can be installed either in Windows or inside WSL; the R lessons work the same in both.
+</div>
+
+## Command-line tools with conda
+
+[Miniforge](https://github.com/conda-forge/miniforge) gives you `conda` with the `conda-forge` and `bioconda` channels. After installing it, create one environment for this course:
+
+```bash
+conda create -n rnaseq -c conda-forge -c bioconda \
+  sra-tools fastqc multiqc fastp salmon
+conda activate rnaseq
+```
+
+What each tool is for:
+
+| Tool | Lesson | Job |
+|---|---|---|
+| `sra-tools` | 3 | download reads from the Sequence Read Archive |
+| `fastqc`, `multiqc` | 3 | quality reports |
+| `fastp` | 4 | adapter and quality trimming |
+| `salmon` | 5, 6 | index the transcriptome and quantify every sample |
+
+Check that it worked:
+
+```bash
+salmon --version
+fastqc --version
+fastp --version
+```
+
+## R and Bioconductor
+
+Install R from [CRAN](https://cran.r-project.org/) (version 4.4 or newer; this site was built with {versions.r}). Then, in R:
+
+```r
+install.packages("BiocManager")
+BiocManager::install(c(
+  "DESeq2", "apeglm", "airway", "tximport",
+  "clusterProfiler", "org.Hs.eg.db",
+  "pheatmap", "EnhancedVolcano", "ggplot2"
+))
+```
+
+This takes a while the first time, since Bioconductor packages are compiled. When it finishes:
+
+```r
+library(DESeq2)
+packageVersion("DESeq2")
+```
+
+The versions used for everything on this site are on the [data page](../../data/). Yours will be a little newer; that is fine, but write them down. Lesson 11 explains why.
+
+<div class="note">
+<strong>RStudio</strong> (or VS Code with the R extension) makes R much more pleasant: you can see your plots, your variables and your script at once. It is not required.
+</div>
+
+## A place for the project
+
+Make one folder per project, with sub-folders you will never have to rename:
+
+```
+airway/
+├── raw/        FASTQ files as downloaded
+├── qc/         FastQC and MultiQC reports
+├── trimmed/    fastp output
+├── ref/        reference genome, transcriptome, annotation
+├── quant/      one Salmon output folder per sample
+├── results/    DESeq2 tables and plots
+└── scripts/    every command you ran, saved
+```
+
+The last folder matters most. Every command in this course can be pasted into a text file in `scripts/`. If you do that from the start, your methods section writes itself, and when something turns out wrong in month three you can find exactly where.
+
+<div class="task">
+<strong>Check.</strong> Both of these should print a version number without errors: <code>salmon --version</code> in the terminal and <code>packageVersion("DESeq2")</code> in R.
+</div>

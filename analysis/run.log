@@ -1,0 +1,54 @@
+Warning messages:
+1: package 'matrixStats' was built under R version 4.5.3 
+2: package 'S4Vectors' was built under R version 4.5.3 
+3: package 'Biobase' was built under R version 4.5.3 
+4: package 'ggplot2' was built under R version 4.5.3 
+5: package 'pheatmap' was built under R version 4.5.3 
+6: package 'clusterProfiler' was built under R version 4.5.3 
+7: package 'ggrepel' was built under R version 4.5.3 
+'select()' returned 1:1 mapping between keys and columns
+estimating size factors
+estimating dispersions
+gene-wise dispersion estimates
+mean-dispersion relationship
+final dispersion estimates
+fitting model and testing
+using 'apeglm' for LFC shrinkage. If used in published research, please cite:
+    Zhu, A., Ibrahim, J.G., Love, M.I. (2018) Heavy-tailed prior distributions for
+    sequence count data: removing the noise and preserving large differences.
+    Bioinformatics. https://doi.org/10.1093/bioinformatics/bty895
+'select()' returned 1:many mapping between keys and columns
+using ntop=500 top features by variance
+'select()' returned 1:many mapping between keys and columns
+null device 
+          1 
+null device 
+          1 
+null device 
+          1 
+null device 
+          1 
+null device 
+          1 
+null device 
+          1 
+null device 
+          1 
+null device 
+          1 
+Warning messages:
+1: Using `size` aesthetic for lines was deprecated in ggplot2 3.4.0.
+ℹ Please use `linewidth` instead.
+ℹ The deprecated feature was likely used in the EnhancedVolcano package.
+  Please report the issue to the authors. 
+2: The `size` argument of `element_line()` is deprecated as of ggplot2 3.4.0.
+ℹ Please use the `linewidth` argument instead.
+ℹ The deprecated feature was likely used in the EnhancedVolcano package.
+  Please report the issue to the authors. 
+null device 
+          1 
+null device 
+          1 
+null device 
+          1 
+done: 4081 genes at padj<0.05; 951 with |LFC|>1; 544 GO terms

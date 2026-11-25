@@ -1,0 +1,7 @@
+---
+import LessonPage from "../../../components/LessonPage.astro";
+import { allPaths, type Entry } from "../../../lib/lessons";
+export const getStaticPaths = () => allPaths("learn");
+const { entry } = Astro.props as { entry: Entry };
+---
+<LessonPage coll="learn" entry={entry} />

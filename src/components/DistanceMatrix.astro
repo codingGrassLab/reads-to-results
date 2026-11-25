@@ -1,0 +1,40 @@
+---
+import dist from "../data/distances.json";
+import samples from "../data/samples.json";
+import type { Lang } from "../i18n/ui";
+interface Props { lang: Lang }
+const { lang } = Astro.props;
+const txt = { en: { d: "Euclidean distance between the two samples' VST values", near: "similar", far: "different" }, bn: { d: "দুই sample-এর VST value-এর মধ্যে Euclidean distance", near: "কাছাকাছি", far: "আলাদা" } }[lang];
+const meta = Object.fromEntries(samples.map((s) => [s.run, s]));
+---
+<figure>
+  <div class="plot" data-plot="dist"><script type="application/json" set:html={JSON.stringify({ ...dist, meta, txt })} />
+    <div class="legend"><span><i style="background:#08306b"></i>{txt.near}</span><span><i style="background:#deebf7;border:1px solid #c9cec8"></i>{txt.far}</span><span class="muted">{txt.d}</span></div></div>
+  <figcaption><slot /></figcaption>
+</figure>
+<script>
+  import { el, tooltip, readData } from "../scripts/plot";
+  type D = { samples: string[]; matrix: number[][]; meta: Record<string, { cell: string; dex: string }>; txt: Record<string, string> };
+  document.querySelectorAll<HTMLElement>('[data-plot="dist"]').forEach((root) => {
+    const d = readData<D>(root);
+    const order = d.samples.map((_, i) => i).sort((a, b) => { const A = d.meta[d.samples[a]], B = d.meta[d.samples[b]]; return A.cell === B.cell ? (A.dex === "untrt" ? -1 : 1) : A.cell.localeCompare(B.cell); });
+    const n = d.samples.length, cs = 52, left = 150, top = 110, W = left + cs * n + 8, H = top + cs * n + 8;
+    const vals = d.matrix.flat().filter((v) => v > 0), lo = Math.min(...vals), hi = Math.max(...vals);
+    const color = (v: number) => { const t = v === 0 ? 0 : (v - lo) / (hi - lo); const a = [8, 48, 107], b = [222, 235, 247]; return `rgb(${a.map((x, i) => Math.round(x + (b[i] - x) * t)).join(",")})`; };
+    const svg = el("svg", { viewBox: `0 0 ${W} ${H}`, role: "img", style: "max-width:560px;margin:auto" });
+    const tip = tooltip(root);
+    const lab = (i: number) => `${d.samples[i]} · ${d.meta[d.samples[i]].cell} ${d.meta[d.samples[i]].dex}`;
+    order.forEach((i, r) => {
+      svg.appendChild(el("text", { class: "label", x: left - 6, y: top + r * cs + cs / 2 + 4, "text-anchor": "end", style: "font-size:9.5px" }, lab(i)));
+      svg.appendChild(el("text", { class: "label", x: left + r * cs + cs / 2, y: top - 6, "text-anchor": "start", transform: `rotate(-60 ${left + r * cs + cs / 2} ${top - 6})`, style: "font-size:9.5px" }, lab(i)));
+      order.forEach((j, c) => {
+        const v = d.matrix[i][j];
+        const rect = el("rect", { x: left + c * cs, y: top + r * cs, width: cs - 1, height: cs - 1, fill: color(v) });
+        rect.addEventListener("pointermove", (e) => tip.show(`${d.samples[i]} ↔ ${d.samples[j]}<br><b>${v.toFixed(1)}</b>`, e.clientX, e.clientY));
+        rect.addEventListener("pointerleave", tip.hide);
+        svg.appendChild(rect);
+      });
+    });
+    root.insertBefore(svg, root.querySelector(".legend"));
+  });
+</script>

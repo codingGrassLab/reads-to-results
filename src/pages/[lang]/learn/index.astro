@@ -1,0 +1,13 @@
+---
+import Base from "../../../layouts/Base.astro";
+import LessonList from "../../../components/LessonList.astro";
+import { langs, t, type Lang } from "../../../i18n/ui";
+export const getStaticPaths = () => langs.map((lang) => ({ params: { lang } }));
+const lang = Astro.params.lang as Lang;
+---
+<Base lang={lang} title={t(lang, "learn.title")} description={t(lang, "learn.lead")} active="learn">
+  <div class="container">
+    <div class="page-head prose"><h1>{t(lang, "learn.title")}</h1><p class="lead">{t(lang, "learn.lead")}</p></div>
+    <LessonList coll="learn" lang={lang} />
+  </div>
+</Base>

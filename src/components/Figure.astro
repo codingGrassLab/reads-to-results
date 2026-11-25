@@ -1,0 +1,8 @@
+---
+interface Props { src: string; alt: string; width?: number; height?: number }
+const { src, alt, width, height } = Astro.props;
+---
+<figure>
+  <img src={src} alt={alt} loading="lazy" width={width} height={height} />
+  {Astro.slots.has("default") && <figcaption><slot /></figcaption>}
+</figure>

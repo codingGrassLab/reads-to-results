@@ -1,0 +1,43 @@
+---
+import { render } from "astro:content";
+import Base from "../layouts/Base.astro";
+import { t, path, num, type Lang } from "../i18n/ui";
+import { lessons, split, type Coll, type Entry } from "../lib/lessons";
+
+interface Props { coll: Coll; entry: Entry }
+const { coll, entry } = Astro.props;
+const { lang, slug } = split(entry.id);
+const list = await lessons(coll, lang);
+const i = list.findIndex((e) => e.id === entry.id);
+const prev = i > 0 ? list[i - 1] : null, next = i < list.length - 1 ? list[i + 1] : null;
+const { Content, headings } = await render(entry);
+const toc = headings.filter((h) => h.depth === 2);
+const sectionTitle = t(lang, coll === "learn" ? "learn.title" : "read.title");
+---
+<Base lang={lang} title={entry.data.title} description={entry.data.description} active={coll}>
+  <div class="container">
+    <div class="lesson">
+      <article class="prose">
+        <div class="lesson-meta">
+          <a href={path(lang, coll)}>{sectionTitle}</a>
+          <span>·</span>
+          <span>{t(lang, "common.lesson")} {num(lang, entry.data.order)} / {num(lang, list.length)}</span>
+          {entry.data.minutes && <span>· {num(lang, entry.data.minutes)} {t(lang, "common.minutes")}</span>}
+        </div>
+        <h1>{entry.data.title}</h1>
+        <p class="lead">{entry.data.description}</p>
+        <Content />
+        <nav class="pager" aria-label="Lessons">
+          {prev && <a href={path(lang, coll, split(prev.id).slug)}><span>← {t(lang, "common.prev")}</span><b>{prev.data.title}</b></a>}
+          {next && <a class="next" href={path(lang, coll, split(next.id).slug)}><span>{t(lang, "common.next")} →</span><b>{next.data.title}</b></a>}
+        </nav>
+      </article>
+      {toc.length > 1 && (
+        <aside>
+          <h4>{t(lang, "common.toc")}</h4>
+          <ul data-toc>{toc.map((h) => <li><a href={`#${h.slug}`}>{h.text}</a></li>)}</ul>
+        </aside>
+      )}
+    </div>
+  </div>
+</Base>

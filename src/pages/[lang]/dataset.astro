@@ -1,0 +1,199 @@
+---
+import Base from "../../layouts/Base.astro";
+import { langs, path, type Lang } from "../../i18n/ui";
+export const getStaticPaths = () => langs.map((lang) => ({ params: { lang } }));
+const lang = Astro.params.lang as Lang;
+const title = "Dataset to sample sheet";
+const description = "Enter a GEO, SRA or ENA accession. Get the runs, their metadata and file sizes, build the sample sheet, and download the FASTQ download and Salmon scripts.";
+---
+<Base lang={lang} title={title} description={description} active="dataset">
+  <div class="container">
+    <div class="page-head prose">
+      <h1>{title}</h1>
+      <p class="lead">{description}</p>
+      <p class="small muted">Only the accession you type is sent, to the public EBI (ENA) and NCBI APIs. Nothing else leaves your browser.</p>
+    </div>
+
+    <form class="ds-search" data-form>
+      <input name="acc" placeholder="GSE52778, SRP033351, PRJNA229998, ERP…" required autocomplete="off" spellcheck="false" />
+      <button type="submit" class="btn btn-primary">Look up</button>
+      <button type="button" class="btn btn-ghost" data-example>Try GSE52778 (airway)</button>
+    </form>
+    <p class="ds-status small muted" data-status></p>
+
+    <section data-result hidden>
+      <div class="ds-study prose" data-study></div>
+      <div class="stats" data-stats></div>
+
+      <h2>Runs and sample sheet</h2>
+      <p class="small muted">Edit the <b>sample</b>, <b>condition</b> and <b>batch</b> columns; the condition guesses come from the sample titles and must be checked. Untick runs you do not want. Technical re-runs of one biological sample (same sample accession) are marked.</p>
+      <div class="table-wrap"><table class="ds-table" data-table>
+        <thead><tr><th></th><th>Run</th><th>Sample</th><th>Title</th><th>Layout</th><th class="num">Reads (M)</th><th class="num">Size (GB)</th><th>sample</th><th>condition</th><th>batch</th></tr></thead>
+        <tbody></tbody>
+      </table></div>
+
+      <div class="ds-actions">
+        <button type="button" class="btn btn-primary" data-dl="samples">samples.csv</button>
+        <button type="button" class="btn btn-ghost" data-dl="bash">download.sh (curl + md5)</button>
+        <button type="button" class="btn btn-ghost" data-dl="ps1">download.ps1 (Windows)</button>
+        <button type="button" class="btn btn-ghost" data-dl="sra">sra.sh (prefetch / fasterq-dump)</button>
+        <button type="button" class="btn btn-ghost" data-dl="salmon">quantify.sh (fastp + Salmon)</button>
+        <a class="btn btn-ghost" data-script-link href="#">Open the script generator with these columns →</a>
+      </div>
+
+      <details class="ds-preview"><summary class="small">Preview download.sh</summary><pre><code data-preview></code></pre></details>
+      <div class="note small"><strong>Before you download.</strong> Check the total size against your disk and connection; the numbers above are the compressed FASTQ sizes. For datasets with processed counts on GEO, you may not need the reads at all: open the GEO page (link above) and look under "Supplementary file".</div>
+    </section>
+  </div>
+
+  <style>
+    .ds-search { display: flex; gap: 0.6rem; flex-wrap: wrap; align-items: center; margin: 0.5rem 0; }
+    .ds-search input { flex: 1 1 320px; padding: 0.65rem 0.9rem; font: inherit; font-size: 1.05rem; border: 1px solid var(--line-strong); border-radius: 999px; background: var(--surface); color: var(--ink); font-family: var(--f-mono); }
+    .ds-search input:focus { outline: 2px solid var(--accent); border-color: transparent; }
+    .ds-status:empty { display: none; }
+    .ds-status.err { color: var(--up); }
+    .ds-study { margin-top: 1.5rem; }
+    .ds-study h2 { margin-top: 0; font-size: 1.5rem; }
+    .ds-table td, .ds-table th { font-size: 0.85rem; padding: 0.4em 0.5em; white-space: nowrap; }
+    .ds-table td.title { white-space: normal; max-width: 26ch; }
+    .ds-table input { width: 9rem; padding: 0.25rem 0.4rem; font: inherit; font-size: 0.85rem; border: 1px solid var(--line-strong); border-radius: 5px; background: var(--bg); color: var(--ink); }
+    .ds-table tr.off td { opacity: 0.45; }
+    .ds-table .tech { font-size: 0.75rem; color: var(--warn); }
+    .ds-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; margin: 1.2rem 0; align-items: center; }
+    .ds-preview pre { max-height: 40vh; overflow: auto; font-size: 0.78rem; }
+    .btn.flash { background: var(--accent); color: #fff; }
+  </style>
+
+  <script>
+    type Run = { run: string; sample: string; alias: string; title: string; layout: string; strategy: string; instrument: string; reads: number; bases: number; fastq: string[]; bytes: number[]; md5: string[]; organism: string; on: boolean; name: string; condition: string; batch: string; tech: boolean };
+    const $ = <T extends Element>(s: string) => document.querySelector<T>(s)!;
+    const form = $<HTMLFormElement>("[data-form]"), status = $<HTMLElement>("[data-status]"), result = $<HTMLElement>("[data-result]");
+    let runs: Run[] = [], study: Record<string, string> = {};
+    const say = (m: string, err = false) => { status.textContent = m; status.classList.toggle("err", err); };
+    const ENA = "https://www.ebi.ac.uk/ena/portal/api/search";
+    const fields = "run_accession,sample_accession,sample_alias,sample_title,experiment_title,library_layout,library_strategy,library_source,instrument_model,read_count,base_count,fastq_ftp,fastq_bytes,fastq_md5,scientific_name,study_accession,secondary_study_accession";
+
+    async function enaJSON(params: Record<string, string>) {
+      const u = `${ENA}?${new URLSearchParams({ format: "json", limit: "0", ...params })}`;
+      const r = await fetch(u); if (!r.ok) throw new Error(`ENA returned ${r.status}`);
+      const t = await r.text(); return t.trim() ? JSON.parse(t) : [];
+    }
+    async function geoToSra(gse: string): Promise<{ srp: string; title: string; summary: string; n: number; taxon: string; type: string }> {
+      const s = await fetch(`https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi?db=gds&term=${gse}[ACCN]&retmode=json`).then((r) => r.json());
+      const ids: string[] = s.esearchresult?.idlist ?? [];
+      if (!ids.length) throw new Error(`${gse} was not found in GEO.`);
+      const e = await fetch(`https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esummary.fcgi?db=gds&id=${ids.join(",")}&retmode=json`).then((r) => r.json());
+      const recs = ids.map((i) => e.result[i]).filter((x) => x && x.accession === gse);
+      const rec = recs[0] ?? e.result[ids[0]];
+      const rel = (rec.extrelations ?? []).find((x: any) => x.relationtype === "SRA");
+      if (!rel) throw new Error(`${gse} has no linked SRA project in GEO (maybe only processed data, or the link is missing). Check the GEO page.`);
+      return { srp: rel.targetobject, title: rec.title, summary: rec.summary, n: +rec.n_samples, taxon: rec.taxon, type: rec.gdstype };
+    }
+
+    async function lookup(accRaw: string) {
+      const acc = accRaw.trim().toUpperCase();
+      runs = []; study = {}; result.hidden = true;
+      if (!acc) return;
+      try {
+        say("Looking up…");
+        let q = "", geo: any = null;
+        if (/^GSE\d+$/.test(acc)) { geo = await geoToSra(acc); q = `secondary_study_accession=${geo.srp}`; }
+        else if (/^[SED]RP\d+$/.test(acc)) q = `secondary_study_accession=${acc}`;
+        else if (/^PRJ[NED][AB]\d+$/.test(acc)) q = `study_accession=${acc}`;
+        else throw new Error("Enter a GEO series (GSE…), an SRA/ENA study (SRP…, ERP…, DRP…) or a BioProject (PRJNA…, PRJEB…).");
+        say("Looking up runs in ENA… (the EBI API can take 10–30 seconds)");
+        const [st, rr] = await Promise.all([
+          enaJSON({ result: "study", query: q, fields: "study_accession,secondary_study_accession,study_title,study_description" }),
+          enaJSON({ result: "read_run", query: q, fields }),
+        ]);
+        if (!rr.length) throw new Error(`No sequencing runs found for ${acc} in ENA.`);
+        study = { acc, title: geo?.title || st[0]?.study_title || "", srp: st[0]?.secondary_study_accession || "", prj: st[0]?.study_accession || "", geo: geo ? acc : "", summary: geo?.summary || st[0]?.study_description || "" };
+        const seen: Record<string, number> = {};
+        runs = rr.map((x: any) => {
+          seen[x.sample_accession] = (seen[x.sample_accession] ?? 0) + 1;
+          return { run: x.run_accession, sample: x.sample_accession, alias: x.sample_alias, title: x.sample_title || x.experiment_title || "", layout: x.library_layout, strategy: x.library_strategy, instrument: x.instrument_model,
+            reads: +x.read_count || 0, bases: +x.base_count || 0, fastq: (x.fastq_ftp || "").split(";").filter(Boolean), bytes: (x.fastq_bytes || "").split(";").map(Number), md5: (x.fastq_md5 || "").split(";"), organism: x.scientific_name,
+            on: true, name: x.run_accession, condition: "", batch: "", tech: seen[x.sample_accession] > 1 } as Run;
+        }).sort((a: Run, b: Run) => a.run.localeCompare(b.run));
+        guessConditions();
+        render();
+        say(`${runs.length} runs from ENA${geo ? `, via GEO → ${geo.srp}` : ""}.`);
+      } catch (e) { say((e as Error).message, true); }
+    }
+
+    // guesses from the sample titles: tokens with digits that repeat (donor, batch) → batch;
+    // the remaining non-generic tokens → condition. Only a starting point; the user edits.
+    function guessConditions() {
+      const n = runs.length; if (n < 2) return;
+      const generic = new Set(["rep", "replicate", "sample", "rna", "rnaseq", "seq", "mrna", "total", "polya", "library", "lib", "run", "hs", "mm", "human", "mouse"]);
+      const toks = runs.map((r) => r.title.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean));
+      const count = new Map<string, number>(); toks.forEach((t) => new Set(t).forEach((x) => count.set(x, (count.get(x) ?? 0) + 1)));
+      runs.forEach((r, k) => {
+        const cond: string[] = [], batch: string[] = [];
+        for (const t of toks[k]) {
+          if (generic.has(t) || /^\d+$/.test(t)) continue;
+          const c = count.get(t) ?? 0;
+          if (/\d/.test(t)) { if (c >= 2 && c <= n / 2) batch.push(t); continue; }   // ids that repeat across samples: donor / batch
+          if (c < n) cond.push(t);                                                   // tokens shared by every sample carry no information
+        }
+        r.condition = cond.join("_"); r.batch = batch.join("_");
+      });
+      if (new Set(runs.map((r) => r.batch)).size < 2) runs.forEach((r) => (r.batch = ""));
+    }
+
+    const fmtGB = (b: number) => (b / 1e9).toFixed(2);
+    function render() {
+      const s = study;
+      $("[data-study]").innerHTML = `<h2>${esc(s.title)}</h2><p class="small muted">${s.geo ? `GEO <a href="https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=${s.geo}">${s.geo}</a> · ` : ""}SRA <a href="https://www.ebi.ac.uk/ena/browser/view/${s.srp}">${s.srp}</a> · BioProject <a href="https://www.ebi.ac.uk/ena/browser/view/${s.prj}">${s.prj}</a> · ${esc(runs[0]?.organism ?? "")} · ${esc(runs[0]?.instrument ?? "")}</p>${s.summary ? `<p class="small">${esc(s.summary).slice(0, 700)}${s.summary.length > 700 ? "…" : ""}</p>` : ""}`;
+      const tb = $<HTMLTableSectionElement>("[data-table] tbody");
+      tb.innerHTML = runs.map((r, i) => `<tr class="${r.on ? "" : "off"}"><td><input type="checkbox" data-on="${i}" ${r.on ? "checked" : ""}></td><td><code>${r.run}</code>${r.tech ? `<div class="tech">re-run of ${r.sample}</div>` : ""}</td><td>${esc(r.alias || r.sample)}</td><td class="title">${esc(r.title)}</td><td>${r.layout === "PAIRED" ? "paired" : "single"}${r.strategy !== "RNA-Seq" ? ` <span class="tech">${esc(r.strategy)}</span>` : ""}</td><td class="num">${(r.reads / 1e6).toFixed(1)}</td><td class="num">${fmtGB(r.bytes.reduce((a, b) => a + b, 0))}</td><td><input data-f="name" data-i="${i}" value="${esc(r.name)}"></td><td><input data-f="condition" data-i="${i}" value="${esc(r.condition)}"></td><td><input data-f="batch" data-i="${i}" value="${esc(r.batch)}"></td></tr>`).join("");
+      tb.querySelectorAll<HTMLInputElement>("[data-on]").forEach((c) => c.addEventListener("change", () => { runs[+c.dataset.on!].on = c.checked; c.closest("tr")!.classList.toggle("off", !c.checked); stats(); preview(); }));
+      tb.querySelectorAll<HTMLInputElement>("[data-f]").forEach((inp) => inp.addEventListener("input", () => { (runs[+inp.dataset.i!] as any)[inp.dataset.f!] = inp.value.trim(); preview(); }));
+      stats(); preview(); result.hidden = false;
+    }
+    function stats() {
+      const on = runs.filter((r) => r.on);
+      const gb = on.reduce((a, r) => a + r.bytes.reduce((x, y) => x + y, 0), 0) / 1e9, reads = on.reduce((a, r) => a + r.reads, 0) / 1e6;
+      const conds = [...new Set(on.map((r) => r.condition).filter(Boolean))];
+      $("[data-stats]").innerHTML = [[on.length, "runs selected"], [new Set(on.map((r) => r.sample)).size, "biological samples"], [reads.toFixed(0), "million reads"], [gb.toFixed(1), "GB of FASTQ"], [conds.length || "–", `conditions${conds.length ? ": " + conds.join(", ") : ""}`]].map(([v, l]) => `<div class="stat"><b>${v}</b><span>${esc(String(l))}</span></div>`).join("");
+      const a = $<HTMLAnchorElement>("[data-script-link]");
+      const p = new URLSearchParams({ input: "salmon", sampleCol: "sample", conditionCol: "condition", batchCol: on.some((r) => r.batch) ? "batch" : "", refLevel: conds[0] ?? "", trtLevel: conds[1] ?? "", minSamples: String(Math.max(1, Math.min(...conds.map((c) => on.filter((r) => r.condition === c).length).concat([3])))) });
+      a.href = `../script/?${p}`;
+    }
+    const esc = (s: string) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
+    const sel = () => runs.filter((r) => r.on);
+
+    function samplesCSV() { const hasB = sel().some((r) => r.batch); return ["sample,run,condition" + (hasB ? ",batch" : "") + ",sample_accession,title,layout", ...sel().map((r) => [r.name, r.run, r.condition, ...(hasB ? [r.batch] : []), r.sample, `"${r.title.replace(/"/g, '""')}"`, r.layout.toLowerCase()].join(","))].join("\n") + "\n"; }
+    function bashDownload() {
+      const L = ["#!/usr/bin/env bash", `# FASTQ download for ${study.acc}: ${sel().length} runs, ${fmtGB(sel().reduce((a, r) => a + r.bytes.reduce((x, y) => x + y, 0), 0))} GB`, "# Generated by Reads to Results. Files come from the ENA mirror; each is checked against its MD5.", "set -euo pipefail", "mkdir -p raw && cd raw", ""];
+      for (const r of sel()) { r.fastq.forEach((f, k) => { const name = f.split("/").pop(); L.push(`curl -L -C - -o ${name} "https://${f}"`, `echo "${r.md5[k]}  ${name}" | md5sum -c -`); }); }
+      L.push("", 'echo "All files downloaded and verified."'); return L.join("\n") + "\n";
+    }
+    function psDownload() {
+      const L = [`# FASTQ download for ${study.acc} (PowerShell). Generated by Reads to Results.`, "$ErrorActionPreference = 'Stop'", "New-Item -ItemType Directory -Force raw | Out-Null", "Set-Location raw", ""];
+      for (const r of sel()) { r.fastq.forEach((f, k) => { const name = f.split("/").pop(); L.push(`curl.exe -L -C - -o ${name} "https://${f}"`, `if ((Get-FileHash ${name} -Algorithm MD5).Hash -ne "${r.md5[k].toUpperCase()}") { throw "MD5 mismatch: ${name}" }`); }); }
+      L.push("", 'Write-Host "All files downloaded and verified."'); return L.join("\n") + "\n";
+    }
+    function sraScript() { const paired = sel().some((r) => r.layout === "PAIRED"); return ["#!/usr/bin/env bash", `# SRA Toolkit download for ${study.acc}. Generated by Reads to Results.`, "set -euo pipefail", "mkdir -p raw && cd raw", `for run in ${sel().map((r) => r.run).join(" ")}; do`, "  prefetch $run", `  fasterq-dump ${paired ? "--split-files " : ""}--threads 4 $run`, "  gzip -f ${run}*.fastq", "done"].join("\n") + "\n"; }
+    function salmonScript() {
+      const L = ["#!/usr/bin/env bash", `# fastp + Salmon quantification for ${study.acc}. Generated by Reads to Results.`, "# Needs: conda env with fastp, salmon, multiqc (see the setup lesson); a Salmon index in ref/salmon_index; FASTQ files in raw/ (download.sh).", "set -euo pipefail", "THREADS=8", "mkdir -p trimmed qc quant", ""];
+      for (const r of sel()) {
+        if (r.layout === "PAIRED" && r.fastq.length >= 2) { const [a, b] = r.fastq.slice(-2).map((f) => f.split("/").pop()); L.push(`# ${r.run}  ${r.title}`, `fastp --in1 raw/${a} --in2 raw/${b} --out1 trimmed/${r.run}_1.fastq.gz --out2 trimmed/${r.run}_2.fastq.gz --detect_adapter_for_pe --length_required 30 --thread $THREADS --html qc/${r.run}.fastp.html --json qc/${r.run}.fastp.json`, `salmon quant -i ref/salmon_index -l A -1 trimmed/${r.run}_1.fastq.gz -2 trimmed/${r.run}_2.fastq.gz --validateMappings --gcBias --seqBias -p $THREADS -o quant/${r.name}`, ""); }
+        else { const a = r.fastq[0]?.split("/").pop(); L.push(`# ${r.run}  ${r.title}`, `fastp --in1 raw/${a} --out1 trimmed/${r.run}.fastq.gz --length_required 30 --thread $THREADS --html qc/${r.run}.fastp.html --json qc/${r.run}.fastp.json`, `salmon quant -i ref/salmon_index -l A -r trimmed/${r.run}.fastq.gz --validateMappings --gcBias --seqBias -p $THREADS -o quant/${r.name}`, ""); }
+      }
+      L.push("multiqc --outdir qc quant qc", 'echo "Done: quant/<sample>/quant.sf for every sample; qc/multiqc_report.html"'); return L.join("\n") + "\n";
+    }
+    function preview() { $("[data-preview]").textContent = bashDownload(); }
+    const dl = (name: string, text: string) => { const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([text], { type: "text/plain" })); a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000); };
+    const flash = (b: HTMLElement, t: string) => { const o = b.textContent; b.textContent = t; b.classList.add("flash"); setTimeout(() => { b.textContent = o; b.classList.remove("flash"); }, 1500); };
+    document.querySelectorAll<HTMLButtonElement>("[data-dl]").forEach((b) => b.addEventListener("click", () => {
+      const k = b.dataset.dl!; if (!sel().length) return;
+      const map: Record<string, [string, () => string]> = { samples: ["samples.csv", samplesCSV], bash: ["download.sh", bashDownload], ps1: ["download.ps1", psDownload], sra: ["sra.sh", sraScript], salmon: ["quantify.sh", salmonScript] };
+      dl(map[k][0], map[k][1]()); flash(b, "Saved");
+    }));
+    form.addEventListener("submit", (e) => { e.preventDefault(); lookup((form.elements.namedItem("acc") as HTMLInputElement).value); });
+    $("[data-example]").addEventListener("click", () => { (form.elements.namedItem("acc") as HTMLInputElement).value = "GSE52778"; lookup("GSE52778"); });
+    const q = new URLSearchParams(location.search).get("acc"); if (q) { (form.elements.namedItem("acc") as HTMLInputElement).value = q; lookup(q); }
+    (window as any).__ds = { get runs() { return runs; }, samplesCSV, bashDownload, salmonScript, lookup };
+  </script>
+</Base>

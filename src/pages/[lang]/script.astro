@@ -1,0 +1,160 @@
+---
+import Base from "../../layouts/Base.astro";
+import { langs, path, type Lang } from "../../i18n/ui";
+export const getStaticPaths = () => langs.map((lang) => ({ params: { lang } }));
+const lang = Astro.params.lang as Lang;
+const title = "DESeq2 script generator";
+const description = "Describe your experiment and get a complete, commented R script (or a Colab notebook) that runs tximport and DESeq2, writes the results tables and makes the standard plots.";
+---
+<Base lang={lang} title={title} description={description} active="script">
+  <div class="container">
+    <div class="page-head prose">
+      <h1>{title}</h1>
+      <p class="lead">{description}</p>
+      <p class="small muted">The script runs on your own computer, where your data stay. It checks your sample sheet and files before it starts and stops with a plain message if something does not match. The same code produced every number on this site; the generated script is tested on the airway data on every build.</p>
+    </div>
+
+    <div class="sg">
+      <form class="sg-form" data-form autocomplete="off">
+        <div class="sg-actions">
+          <button type="button" class="btn btn-ghost" data-example>Fill with the airway example</button>
+          <button type="button" class="btn btn-ghost" data-reset>Reset</button>
+        </div>
+
+        <fieldset>
+          <legend>Input</legend>
+          <label>Where do the counts come from?
+            <select name="input"><option value="salmon">Salmon quant.sf folders (via tximport)</option><option value="counts">A count matrix CSV (genes × samples)</option></select>
+          </label>
+          <label data-only="salmon">Folder with one sub-folder per sample <input name="quantDir" value="quant" /></label>
+          <label data-only="salmon">GTF of the annotation used for the Salmon index <input name="gtfFile" value="ref/annotation.gtf.gz" /></label>
+          <label data-only="counts">Count matrix file (first column = gene ID) <input name="countsFile" value="counts.csv" /></label>
+          <label>Sample sheet (CSV) <input name="samplesFile" value="samples.csv" /></label>
+          <label>Output folder <input name="outDir" value="results" /></label>
+        </fieldset>
+
+        <fieldset>
+          <legend>Sample sheet columns</legend>
+          <label>Column with sample names (must match folder names / matrix columns) <input name="sampleCol" value="sample" /></label>
+          <label>Condition column <input name="conditionCol" value="condition" /></label>
+          <label>Reference level (control) <input name="refLevel" value="control" /></label>
+          <label>Treatment level <input name="trtLevel" value="treated" /></label>
+          <label>Batch / pairing column (optional; e.g. donor, batch) <input name="batchCol" placeholder="leave empty if none" /></label>
+          <label>Organism <select name="organism"><option value="human">human (org.Hs.eg.db)</option><option value="mouse">mouse (org.Mm.eg.db)</option></select></label>
+        </fieldset>
+
+        <fieldset>
+          <legend>Analysis settings</legend>
+          <label>Keep genes with at least <input type="number" name="minCounts" value="10" min="0" /> counts…</label>
+          <label>…in at least this many samples (smallest group size) <input type="number" name="minSamples" value="3" min="1" /></label>
+          <label>Adjusted p threshold <input type="number" name="alpha" value="0.05" step="any" min="0" max="1" /></label>
+          <label>|log2 fold change| threshold for the significant list <input type="number" name="lfc" value="1" step="0.25" min="0" /></label>
+          <label>Fold-change shrinkage <select name="shrink"><option value="apeglm">apeglm (recommended)</option><option value="ashr">ashr</option><option value="none">none</option></select></label>
+        </fieldset>
+
+        <fieldset>
+          <legend>Outputs</legend>
+          <label class="chk"><input type="checkbox" name="pca" checked /> PCA plot</label>
+          <label class="chk"><input type="checkbox" name="phist" checked /> p-value histogram</label>
+          <label class="chk"><input type="checkbox" name="ma" checked /> MA plot</label>
+          <label class="chk"><input type="checkbox" name="volcano" checked /> volcano plot, labelling the top <input type="number" name="labelTop" value="10" min="0" max="50" style="width:4.5rem;display:inline-block" /> genes</label>
+          <label class="chk"><input type="checkbox" name="heatmap" checked /> heatmap of the top <input type="number" name="heatmapN" value="30" min="5" max="200" style="width:4.5rem;display:inline-block" /> genes</label>
+          <label class="chk"><input type="checkbox" name="counts" /> count plots for these genes:</label>
+          <label><textarea name="countGenes" rows="2" placeholder="one symbol or ID per line"></textarea></label>
+          <label class="chk"><input type="checkbox" name="enrichment" checked /> GO biological-process enrichment (clusterProfiler)</label>
+        </fieldset>
+      </form>
+
+      <div class="sg-out">
+        <div class="sg-outhead">
+          <h2 style="margin:0">analysis.R</h2>
+          <div>
+            <button type="button" class="btn btn-ghost" data-copy>Copy</button>
+            <button type="button" class="btn btn-primary" data-dl="r">Download .R</button>
+            <button type="button" class="btn btn-ghost" data-dl="ipynb">Colab notebook</button>
+          </div>
+        </div>
+        <p class="small muted" data-summary></p>
+        <pre class="sg-code"><code data-code></code></pre>
+      </div>
+    </div>
+
+    <div class="prose" style="margin-top:3rem">
+      <h2>How to run it</h2>
+      <ol>
+        <li>Put <code>analysis.R</code> in your project folder, next to the files it names (the comment block at the top lists them).</li>
+        <li>Install the packages once, in R: <code>BiocManager::install(c("DESeq2", "tximport", "rtracklayer", "apeglm", "clusterProfiler", "org.Hs.eg.db", "pheatmap"))</code>. <a href={path(lang, "learn", "02-setup")}>Setup lesson</a>.</li>
+        <li>Run it: <code>Rscript analysis.R</code> in a terminal, or <code>source("analysis.R")</code> in RStudio.</li>
+        <li>Open <code>deseq2_results.csv</code> in <a href={path(lang, "results")}>Explore your results</a> for journal-ready figures, and the <a href={path(lang, "methods")}>Methods writer</a> for the text.</li>
+      </ol>
+      <p>If the script stops, read the message: it names the column or file it could not find. The most common causes are sample names in the sheet that do not match the folder or column names, and a reference level spelled differently from the sheet. The <a href={path(lang, "learn", "08-deseq2")}>DESeq2 lesson</a> explains each step the script runs.</p>
+    </div>
+  </div>
+
+  <style>
+    .sg { display: grid; grid-template-columns: minmax(0, 400px) minmax(0, 1fr); gap: 2rem; align-items: start; }
+    @media (max-width: 960px) { .sg { grid-template-columns: 1fr; } }
+    .sg-form fieldset { border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 0.8rem 1rem 1rem; margin: 0 0 1rem; background: var(--surface); }
+    .sg-form legend { font-weight: 600; color: var(--ink); padding: 0 0.4rem; }
+    .sg-form label { display: block; font-size: 0.86rem; color: var(--muted); margin: 0.5rem 0; }
+    .sg-form input:not([type="checkbox"]):not([type="number"]), .sg-form select, .sg-form textarea, .sg-form input[type="number"] { display: block; width: 100%; margin-top: 0.2rem; padding: 0.4rem 0.55rem; font: inherit; font-size: 0.93rem; color: var(--ink); background: var(--bg); border: 1px solid var(--line-strong); border-radius: 6px; }
+    .sg-form label.chk { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+    .sg-form label.chk input[type="checkbox"] { margin: 0; }
+    .sg-form label.chk input[type="number"] { margin: 0; padding: 0.2rem 0.4rem; }
+    .sg-form label[hidden] { display: none; }
+    .sg-actions { display: flex; gap: 0.6rem; margin-bottom: 1rem; flex-wrap: wrap; }
+    .sg-out { position: sticky; top: calc(var(--header-h) + 1.5rem); }
+    .sg-outhead { display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap; margin-bottom: 0.5rem; }
+    .sg-outhead div { display: flex; gap: 0.5rem; }
+    .sg-code { max-height: 75vh; overflow: auto; font-size: 0.8rem; line-height: 1.45; }
+    .btn.flash { background: var(--accent); color: #fff; }
+  </style>
+
+  <script>
+    import { buildScript, buildNotebook, defaults } from "../../scripts/rscript.mjs";
+    const form = document.querySelector<HTMLFormElement>("[data-form]")!;
+    const code = document.querySelector<HTMLElement>("[data-code]")!;
+    const summary = document.querySelector<HTMLElement>("[data-summary]")!;
+    const STORE = "script-generator";
+    const el = (n: string) => form.elements.namedItem(n) as HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement;
+    const val = (n: string) => el(n).value.trim();
+    const chk = (n: string) => (el(n) as HTMLInputElement).checked;
+    const num = (n: string, d: number) => { const v = parseFloat(val(n)); return Number.isFinite(v) ? v : d; };
+
+    function config() {
+      return {
+        ...defaults,
+        input: val("input") as "salmon" | "counts", quantDir: val("quantDir") || "quant", gtfFile: val("gtfFile") || "ref/annotation.gtf.gz", countsFile: val("countsFile") || "counts.csv",
+        samplesFile: val("samplesFile") || "samples.csv", outDir: val("outDir") || "results",
+        sampleCol: val("sampleCol") || "sample", conditionCol: val("conditionCol") || "condition", refLevel: val("refLevel") || "control", trtLevel: val("trtLevel") || "treated", batchCol: val("batchCol"),
+        organism: val("organism") as "human" | "mouse", minCounts: num("minCounts", 10), minSamples: num("minSamples", 3), alpha: num("alpha", 0.05), lfc: num("lfc", 1),
+        shrink: val("shrink") as "apeglm" | "ashr" | "none",
+        plots: { pca: chk("pca"), phist: chk("phist"), ma: chk("ma"), volcano: chk("volcano"), heatmap: chk("heatmap"), counts: chk("counts") },
+        labelTop: num("labelTop", 10), heatmapN: num("heatmapN", 30), countGenes: val("countGenes").split(/\n|,/).map((s) => s.trim()).filter(Boolean), enrichment: chk("enrichment"),
+      };
+    }
+    let current = "";
+    function render() {
+      const c = config();
+      form.querySelectorAll<HTMLElement>("[data-only]").forEach((l) => (l.hidden = l.dataset.only !== c.input));
+      current = buildScript(c);
+      code.textContent = current;
+      summary.textContent = `${current.split("\n").length} lines · design ${c.batchCol ? `~ ${c.batchCol} + ${c.conditionCol}` : `~ ${c.conditionCol}`} · ${c.trtLevel} vs ${c.refLevel} · padj < ${c.alpha}, |log2FC| > ${c.lfc}${c.shrink !== "none" ? ` · ${c.shrink}` : ""}${c.enrichment ? " · GO" : ""}`;
+      try { localStorage.setItem(STORE, JSON.stringify(Object.fromEntries(Array.from(form.elements).filter((e) => (e as HTMLInputElement).name).map((e) => [(e as HTMLInputElement).name, (e as HTMLInputElement).type === "checkbox" ? (e as HTMLInputElement).checked : (e as HTMLInputElement).value])))); } catch {}
+    }
+    function load(o: Record<string, string | boolean>) { for (const e of Array.from(form.elements) as HTMLInputElement[]) { if (!e.name || !(e.name in o)) continue; if (e.type === "checkbox") e.checked = !!o[e.name]; else e.value = String(o[e.name]); } }
+    form.addEventListener("input", render);
+    form.querySelector("[data-example]")!.addEventListener("click", () => { load({ input: "counts", countsFile: "airway_counts.csv", samplesFile: "airway_samples.csv", outDir: "results", sampleCol: "Run", conditionCol: "dex", refLevel: "untrt", trtLevel: "trt", batchCol: "cell", organism: "human", minCounts: "10", minSamples: "4", alpha: "0.05", lfc: "1", shrink: "apeglm", counts: true, countGenes: "CRISPLD2\nFKBP5\nTSC22D3", enrichment: true }); render(); });
+    form.querySelector("[data-reset]")!.addEventListener("click", () => { form.reset(); render(); });
+    const flash = (b: HTMLElement, t: string) => { const o = b.textContent; b.textContent = t; b.classList.add("flash"); setTimeout(() => { b.textContent = o; b.classList.remove("flash"); }, 1500); };
+    const dl = (name: string, text: string, type: string) => { const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([text], { type })); a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000); };
+    document.querySelector<HTMLButtonElement>("[data-copy]")!.addEventListener("click", async (e) => { try { await navigator.clipboard.writeText(current); flash(e.currentTarget as HTMLElement, "Copied"); } catch {} });
+    document.querySelector<HTMLButtonElement>('[data-dl="r"]')!.addEventListener("click", (e) => { dl("analysis.R", current, "text/plain"); flash(e.currentTarget as HTMLElement, "Saved"); });
+    document.querySelector<HTMLButtonElement>('[data-dl="ipynb"]')!.addEventListener("click", (e) => { dl("analysis.ipynb", buildNotebook(config()), "application/json"); flash(e.currentTarget as HTMLElement, "Saved"); });
+    try { const s = localStorage.getItem(STORE); if (s) load(JSON.parse(s)); } catch {}
+    const q = new URLSearchParams(location.search);
+    if ([...q.keys()].length) { const o: Record<string, string> = {}; q.forEach((v, k) => { if (el(k)) o[k] = v; }); load(o); }
+    render();
+    (window as any).__sg = { config, buildScript };
+  </script>
+</Base>

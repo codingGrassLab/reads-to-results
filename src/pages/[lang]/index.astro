@@ -1,0 +1,97 @@
+---
+import Base from "../../layouts/Base.astro";
+import Stats from "../../components/Stats.astro";
+import { langs, t, path, type Lang } from "../../i18n/ui";
+import { lessons, split } from "../../lib/lessons";
+import summary from "../../data/summary.json";
+export const getStaticPaths = () => langs.map((lang) => ({ params: { lang } }));
+const lang = Astro.params.lang as Lang;
+const learn = await lessons("learn", lang);
+const read = await lessons("read", lang);
+---
+<Base lang={lang} active="home">
+  <div class="container">
+    <section class="hero">
+      <div>
+        <div class="eyebrow">RNA-seq · differential expression · publication-ready output</div>
+        <h1>From your results table to figures you can submit</h1>
+        <p class="lead">From an accession to a sample sheet and download scripts, to a DESeq2 script you run on your own computer, to significant genes, journal-size figures, legends and methods text. Your data never leave your machine.</p>
+        <div class="actions">
+          <a class="btn btn-primary" href={path(lang, "script")}>Generate a DESeq2 script</a>
+          <a class="btn btn-ghost" href={path(lang, "results")}>Explore your results</a>
+        </div>
+      </div>
+      <div class="hero-art">
+        <img src="/plots/volcano.png" alt="Volcano plot of the airway dataset: log2 fold change against adjusted p-value, with the strongest genes labelled" width="1800" height="1600" />
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-head"><h2>Analysis tools</h2><p>Start from the output of your own differential-expression run.</p></div>
+      <div class="grid">
+        <a class="card" href={path(lang, "dataset")}>
+          <span class="n">01</span>
+          <h3>Dataset to sample sheet</h3>
+          <p>Type a GEO, SRA or ENA accession. See every run with its metadata, reads and file size; build and download the sample sheet; get the FASTQ download scripts (bash, PowerShell, SRA Toolkit) and the fastp + Salmon quantification script.</p>
+        </a>
+        <a class="card" href={path(lang, "script")}>
+          <span class="n">02</span>
+          <h3>DESeq2 script generator</h3>
+          <p>Describe your experiment (Salmon folders or a count matrix, sample sheet, condition, batch) and download a complete, commented R script or Colab notebook that runs tximport and DESeq2, writes the results tables and makes the standard plots. Tested on the airway data.</p>
+        </a>
+        <a class="card" href={path(lang, "results")}>
+          <span class="n">03</span>
+          <h3>Explore your results</h3>
+          <p>Upload a results table, choose thresholds, and get: significant genes as CSV and Excel (up and down sheets), volcano and MA plots as SVG and 300-dpi PNG at 89 / 120 / 183 mm, gene labels of your choice, and ready figure legends. Ensembl IDs are mapped to symbols automatically.</p>
+        </a>
+        <a class="card" href={path(lang, "methods")}>
+          <span class="n">04</span>
+          <h3>Methods writer</h3>
+          <p>Enter the tools, versions and settings you used (fastp, Salmon, tximport, DESeq2, apeglm, clusterProfiler) and get a methods paragraph with numbered, verified citations, plus a BibTeX file.</p>
+        </a>
+        <div class="card soon">
+          <span class="n">05</span>
+          <h3>More tools</h3>
+          <p>Enrichment analysis and a reproducibility report are next. The list grows as the author's own analyses need them.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-head"><h2>Tested on real data</h2><p>Every tool is checked against a complete analysis of a public dataset, whose numbers are shown throughout the site.</p></div>
+      <Stats items={[
+        { value: 8, label: "airway samples (Himes et al. 2014)" },
+        { value: summary.genes_tested, label: "genes tested" },
+        { value: summary.sig_005, label: "changed at adjusted p below 0.05" },
+        { value: summary.sig_005_lfc1, label: "of those, more than two-fold" },
+      ]} />
+      <p class="muted">Inputs, versions, downloads and a check against the original paper are on the <a href={path(lang, "data")}>data and methods page</a>.</p>
+    </section>
+
+    <section class="section learn-strip">
+      <div class="section-head"><h2>If you want to understand what the tools do</h2><p>A course that follows the airway dataset from raw reads to pathways, and a guide to reading every kind of plot.</p></div>
+      <div class="two">
+        <div>
+          <h3 class="strip-h"><a href={path(lang, "learn")}>{t(lang, "learn.title")}</a> <span class="muted small">· {learn.length} lessons</span></h3>
+          <ol class="mini">{learn.map((e) => <li><a href={path(lang, "learn", split(e.id).slug)}>{e.data.title}</a></li>)}</ol>
+        </div>
+        <div>
+          <h3 class="strip-h"><a href={path(lang, "read")}>{t(lang, "read.title")}</a> <span class="muted small">· {read.length} pages</span></h3>
+          <ol class="mini">{read.map((e) => <li><a href={path(lang, "read", split(e.id).slug)}>{e.data.title}</a></li>)}</ol>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <style>
+    .card.soon { opacity: 0.75; cursor: default; }
+    .card.soon:hover { transform: none; box-shadow: none; border-color: var(--line); }
+    .learn-strip { border-top: 1px solid var(--line); padding-top: 2.5rem; }
+    .strip-h { margin: 0 0 0.6rem; font-size: 1.2rem; }
+    .strip-h a { text-decoration: none; color: var(--ink); }
+    .mini { margin: 0; padding-left: 1.4rem; font-size: 0.93rem; line-height: 1.5; }
+    .mini li { margin: 0.25em 0; }
+    .mini a { color: var(--muted); text-decoration: none; }
+    .mini a:hover { color: var(--accent); text-decoration: underline; }
+  </style>
+</Base>

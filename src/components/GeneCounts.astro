@@ -1,0 +1,37 @@
+---
+import gc from "../data/gene_counts.json";
+import type { Lang } from "../i18n/ui";
+interface Props { lang: Lang }
+const { lang } = Astro.props;
+const txt = { en: { y: "normalized count (log scale)", trt: "dexamethasone", untrt: "untreated", line: "lines join the two samples of one cell line" }, bn: { y: "normalized count (log scale)", trt: "dexamethasone", untrt: "untreated", line: "একটা cell line-এর দুটো sample রেখা দিয়ে জোড়া" } }[lang];
+---
+<figure>
+  <div class="plot" data-plot="gene"><script type="application/json" set:html={JSON.stringify({ ...gc, txt })} /><div class="legend"><span class="muted">{txt.line}</span></div></div>
+  <figcaption><slot /></figcaption>
+</figure>
+<script>
+  import { linear, axes, el, tooltip, readData, colors, cellShape, shape } from "../scripts/plot";
+  type P = { run: string; count: number; dex: string; cell: string };
+  document.querySelectorAll<HTMLElement>('[data-plot="gene"]').forEach((root) => {
+    const d = readData<{ symbol: string; points: P[]; txt: Record<string, string> }>(root);
+    const W = 520, H = 360, m = { l: 70, r: 20, t: 16, b: 48 };
+    const vals = d.points.map((p) => Math.log10(p.count));
+    const x = linear([-0.5, 1.5], [m.l, W - m.r]), y = linear([Math.floor(Math.min(...vals) * 2) / 2 - 0.1, Math.ceil(Math.max(...vals) * 2) / 2 + 0.1], [H - m.b, m.t]);
+    const svg = el("svg", { viewBox: `0 0 ${W} ${H}`, role: "img" }); const g = el("g"); svg.appendChild(g);
+    const yt = [] as number[]; for (let v = Math.ceil(y.domain[0]); v <= y.domain[1]; v++) yt.push(v);
+    axes(g, x, y, { yLabel: d.txt.y, xTicks: [0, 1], xFmt: (v) => (v === 0 ? d.txt.untrt : d.txt.trt), yTicks: yt, yFmt: (v) => (10 ** v).toLocaleString() });
+    const tip = tooltip(root);
+    const cells = [...new Set(d.points.map((p) => p.cell))];
+    for (const cell of cells) {
+      const a = d.points.find((p) => p.cell === cell && p.dex === "untrt")!, b = d.points.find((p) => p.cell === cell && p.dex === "trt")!;
+      g.appendChild(el("line", { x1: x(0), y1: y(Math.log10(a.count)), x2: x(1), y2: y(Math.log10(b.count)), stroke: "#c9cec8", "stroke-width": 1.5 }));
+    }
+    for (const p of d.points) {
+      const s = shape(cellShape[p.cell] ?? "circle", x(p.dex === "trt" ? 1 : 0), y(Math.log10(p.count)), 7, { fill: p.dex === "trt" ? colors.trt : colors.untrt, stroke: "#fff", "stroke-width": 1.5 });
+      s.addEventListener("pointermove", (e) => tip.show(`<b>${p.run}</b> · ${p.cell}<br>${d.symbol}: ${p.count.toLocaleString()}`, e.clientX, e.clientY));
+      s.addEventListener("pointerleave", tip.hide);
+      g.appendChild(s);
+    }
+    root.insertBefore(svg, root.querySelector(".legend"));
+  });
+</script>

@@ -1,0 +1,65 @@
+---
+title: "Trimming: when to do it, and when not to"
+description: "Remove adapter sequence and very poor bases with fastp, and understand why aggressive quality trimming hurts RNA-seq."
+order: 4
+minutes: 10
+---
+
+## What trimming removes
+
+Two kinds of unwanted sequence can sit in a read:
+
+- **Adapter sequence.** If an RNA fragment is shorter than the read length, the sequencer reads through the end of the fragment into the synthetic adapter attached to it. Those bases are not from the genome and will not align.
+- **Low-quality bases**, mostly at the 3′ end.
+
+Salmon handles both reasonably well on its own: its selective alignment scores each mapping and tolerates a non-matching end. So trimming is less critical than it was ten years ago. It still helps when adapter content is high, and it makes alignment rates easier to interpret.
+
+## fastp
+
+`fastp` detects adapters automatically for paired-end data, trims them, removes reads that become too short, and writes a report, all in one pass:
+
+```bash
+mkdir -p trimmed
+fastp \
+  --in1 raw/SRR1039508_1.fastq.gz  --in2 raw/SRR1039508_2.fastq.gz \
+  --out1 trimmed/SRR1039508_1.fastq.gz --out2 trimmed/SRR1039508_2.fastq.gz \
+  --detect_adapter_for_pe \
+  --length_required 30 \
+  --thread 4 \
+  --html qc/SRR1039508.fastp.html --json qc/SRR1039508.fastp.json
+```
+
+The report tells you how many reads were removed and why. For a healthy library you should see well over 95% of reads kept.
+
+To run all eight samples, loop over the run names:
+
+```bash
+for run in SRR1039508 SRR1039509 SRR1039512 SRR1039513 \
+           SRR1039516 SRR1039517 SRR1039520 SRR1039521; do
+  fastp --in1 raw/${run}_1.fastq.gz --in2 raw/${run}_2.fastq.gz \
+        --out1 trimmed/${run}_1.fastq.gz --out2 trimmed/${run}_2.fastq.gz \
+        --detect_adapter_for_pe --length_required 30 --thread 4 \
+        --html qc/${run}.fastp.html --json qc/${run}.fastp.json
+done
+```
+
+MultiQC reads fastp's JSON files too, so re-running `multiqc qc` gives you before-and-after in one report.
+
+## What not to do
+
+<div class="warn">
+<strong>Do not quality-trim hard.</strong> Settings like "cut every base below Q30" throw away real biological signal: trimmed reads become shorter and align less uniquely, and the loss is not even across genes (GC-rich and 3′-biased regions suffer more). Studies that tested this on RNA-seq found that aggressive trimming <em>changes</em> differential expression results without improving them. Trim adapters; leave quality alone unless the FastQC plot showed something seriously wrong.
+</div>
+
+Also do not:
+
+- Remove duplicates. In RNA-seq, identical reads are mostly from highly expressed genes, not PCR artefacts. Removing them flattens exactly the signal you want.
+- Trim the first 12 bases because "Per base sequence content" failed. That bias is in composition, not accuracy; the bases are correct.
+
+## Record keeping
+
+Save the command and, for each sample, the fastp numbers: reads before, reads after, percent adapter-trimmed. These go in the methods section as "Adapters were removed with fastp vX.Y (Chen et al. 2018); reads shorter than 30 bp were discarded".
+
+<div class="task">
+<strong>Decision exercise.</strong> Your MultiQC report shows adapter content reaching 1.5% at the last base and median quality above Q30 everywhere. Is trimming necessary? What would you do, and what would you write in the methods either way?
+</div>

@@ -1,0 +1,45 @@
+---
+import pca from "../data/pca.json";
+import type { Lang } from "../i18n/ui";
+interface Props { lang: Lang }
+const { lang } = Astro.props;
+const txt = {
+  en: { hover: "Hover or tap a point for the sample.", trt: "dexamethasone", untrt: "untreated", cell: "cell line (donor)", pc: "PC" },
+  bn: { hover: "sample-এর নাম দেখতে বিন্দুর ওপর মাউস রাখুন বা ট্যাপ করুন।", trt: "dexamethasone", untrt: "untreated", cell: "cell line (দাতা)", pc: "PC" },
+}[lang];
+---
+<figure>
+  <div class="plot" data-plot="pca">
+    <script type="application/json" set:html={JSON.stringify({ ...pca, txt })} />
+    <div class="legend">
+      <span><i style="background:#0f6e6a"></i>{txt.trt}</span>
+      <span><i style="background:#b86b1f"></i>{txt.untrt}</span>
+      <span class="muted">● ■ ▲ ◆ = {txt.cell}</span>
+    </div>
+  </div>
+  <figcaption><slot />{" "}{txt.hover}</figcaption>
+</figure>
+
+<script>
+  import { linear, axes, el, tooltip, readData, colors, cellShape, shape } from "../scripts/plot";
+  type P = { run: string; PC1: number; PC2: number; dex: string; cell: string };
+  document.querySelectorAll<HTMLElement>('[data-plot="pca"]').forEach((root) => {
+    const d = readData<{ percentVar: number[]; points: P[]; txt: Record<string, string> }>(root);
+    const W = 640, H = 420, m = { l: 60, r: 20, t: 16, b: 50 };
+    const xs = d.points.map((p) => p.PC1), ys = d.points.map((p) => p.PC2);
+    const pad = (a: number[]) => { const lo = Math.min(...a), hi = Math.max(...a), p = (hi - lo) * 0.15; return [lo - p, hi + p] as [number, number]; };
+    const x = linear(pad(xs), [m.l, W - m.r]), y = linear(pad(ys), [H - m.b, m.t]);
+    const svg = el("svg", { viewBox: `0 0 ${W} ${H}`, role: "img" });
+    const g = el("g"); svg.appendChild(g);
+    axes(g, x, y, { xLabel: `PC1: ${d.percentVar[0]}% variance`, yLabel: `PC2: ${d.percentVar[1]}% variance` });
+    const tip = tooltip(root);
+    for (const p of d.points) {
+      const s = shape(cellShape[p.cell] ?? "circle", x(p.PC1), y(p.PC2), 7, { fill: p.dex === "trt" ? colors.trt : colors.untrt, stroke: "#fff", "stroke-width": 1.5, style: "cursor:pointer" });
+      const show = (e: MouseEvent | PointerEvent) => tip.show(`<b>${p.run}</b><br>${p.cell} · ${p.dex === "trt" ? d.txt.trt : d.txt.untrt}<br>PC1 ${p.PC1.toFixed(1)}, PC2 ${p.PC2.toFixed(1)}`, e.clientX, e.clientY);
+      s.addEventListener("pointermove", show); s.addEventListener("pointerleave", tip.hide);
+      g.appendChild(s);
+      g.appendChild(el("text", { x: x(p.PC1) + 10, y: y(p.PC2) + 4, class: "label", style: "font-size:10px" }, p.run));
+    }
+    root.insertBefore(svg, root.querySelector(".legend"));
+  });
+</script>

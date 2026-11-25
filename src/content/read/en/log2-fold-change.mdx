@@ -1,0 +1,56 @@
+---
+title: "log2 fold change: what the number means"
+description: "Fold change, why it is reported on a log2 scale, how it relates to the counts of one real gene, and how shrinkage changes it."
+order: 5
+minutes: 8
+---
+import gene from "../../../data/gene_counts.json";
+import GeneCounts from "../../../components/GeneCounts.astro";
+
+## One gene
+
+<GeneCounts lang="en">CRISPLD2, the gene the airway paper is about: normalized counts in the eight samples. Each line joins the untreated and the dexamethasone sample of one cell line.</GeneCounts>
+
+DESeq2 reports for this gene:
+
+| | |
+|---|---|
+| baseMean | {gene.result.baseMean.toLocaleString("en-US", { maximumFractionDigits: 0 })} |
+| log2FoldChange | {gene.result.log2FoldChange.toFixed(2)} |
+| lfcSE | {gene.result.lfcSE} |
+| shrunken log2FoldChange (apeglm) | {gene.result.shrunk_log2FoldChange.toFixed(2)} |
+| padj | {gene.result.padj.toExponential(1)} |
+
+## From counts to fold change
+
+Look at donor N61311: {gene.points[0].count.toLocaleString("en-US")} untreated, {gene.points[1].count.toLocaleString("en-US")} treated, a ratio of {(gene.points[1].count / gene.points[0].count).toFixed(1)}. Donor N080611: {gene.points[4].count.toLocaleString("en-US")} and {gene.points[5].count.toLocaleString("en-US")}, ratio {(gene.points[5].count / gene.points[4].count).toFixed(1)}. The four donors give ratios between about 3.5 and 8.5. DESeq2's estimate, {gene.result.log2FoldChange.toFixed(2)} on the log2 scale, is 2^{gene.result.log2FoldChange.toFixed(2)} ≈ **{(2 ** gene.result.log2FoldChange).toFixed(1)}-fold**, a weighted average of the donors' ratios on the log scale, from a model that also accounts for the counts' variability.
+
+## Why log2
+
+Fold changes are ratios, and ratios are awkward: "doubled" is 2 but "halved" is 0.5, so up and down look different sizes. On a log2 scale doubled is +1 and halved is −1. The scale is symmetric, additive (two doublings are +2), and the numbers are small and readable:
+
+| log2FC | fold change | meaning |
+|---|---|---|
+| +3 | 8× | strongly up |
+| +1 | 2× | doubled |
+| +0.5 | 1.4× | up 41% |
+| 0 | 1× | unchanged |
+| −0.5 | 0.71× | down 29% |
+| −1 | 0.5× | halved |
+| −3 | 0.125× | strongly down |
+
+**The sign depends on the reference level.** "+2.6 for CRISPLD2" is meaningless unless you say "dexamethasone relative to untreated". Lesson 7 sets this with `relevel()`; the results column name, `dex_trt_vs_untrt`, records it.
+
+## The standard error
+
+lfcSE = {gene.result.lfcSE} says how uncertain the estimate is. A rough 95% interval is the estimate ± 2 × lfcSE: {(gene.result.log2FoldChange - 2 * gene.result.lfcSE).toFixed(2)} to {(gene.result.log2FoldChange + 2 * gene.result.lfcSE).toFixed(2)}, or about {(2 ** (gene.result.log2FoldChange - 2 * gene.result.lfcSE)).toFixed(1)}- to {(2 ** (gene.result.log2FoldChange + 2 * gene.result.lfcSE)).toFixed(1)}-fold. That is a tight interval, because the gene is expressed highly and all four donors agree. A low-count gene might have log2FC = 2 with lfcSE = 1.5: the interval would run from −1 to +5, which is to say the fold change is unknown.
+
+## Shrinkage
+
+The shrunken estimate for CRISPLD2 is {gene.result.shrunk_log2FoldChange.toFixed(2)}, almost identical to the raw {gene.result.log2FoldChange.toFixed(2)}. That is the point: shrinkage leaves well-measured genes alone. For a gene with lfcSE = 1.5, it would pull the estimate strongly toward zero. The [MA plot](../ma-plot/) shows this across all genes.
+
+## Reading fold changes in a paper
+
+- A fold change without an expression level or a confidence interval is half a result. Ask for baseMean and lfcSE, or for the counts.
+- "Fold change above 2" as a filter is a convention, not a biological threshold. A 1.5-fold change in a transcription factor can matter more than a 10-fold change in a gene nobody has heard of expressed at 3 counts.
+- When counts in one group are all zero, the fold change is formally infinite. DESeq2 returns a large finite number through its regularisation; treat it as "switched on" rather than as a magnitude.

@@ -1,0 +1,35 @@
+---
+title: "MA plot: fold change against expression level"
+description: "Where in the expression range are the changes, and what shrinkage does to low-count genes. Toggle between raw and shrunken fold changes on the same data."
+order: 3
+minutes: 6
+---
+import summary from "../../../data/summary.json";
+import VolcanoPlot from "../../../components/VolcanoPlot.astro";
+
+## The plot
+
+<VolcanoPlot lang="en" mode="ma">Each point is a gene. x: mean of normalized counts across all eight samples (log scale). y: log2 fold change. Tick the box to switch to apeglm-shrunken fold changes.</VolcanoPlot>
+
+## Reading it
+
+The MA plot ("M" for the log ratio, "A" for the average) answers a question the volcano hides: **how well is each gene measured?** Genes on the left have few counts; genes on the right have thousands.
+
+With raw fold changes, the left edge fans out: low-count genes show huge apparent changes in both directions. Almost none of them are significant (grey). This is sampling noise, not biology: with 3 counts in one group and 12 in the other you get log2FC = 2 from nothing.
+
+Tick **shrunken fold changes**. The fan collapses toward zero. Genes on the right, with thousands of counts, barely move, because the data pin them down. Genes on the left are pulled toward zero in proportion to their uncertainty. This is what `lfcShrink(type = "apeglm")` does: it combines each gene's own estimate with a prior learned from all genes, so that a poorly measured gene is not ranked above a well-measured one simply because it was noisy.
+
+<div class="note">
+<strong>A real exception.</strong> One gene in this dataset, <code>ALOX15B</code>, has a <em>larger</em> shrunken fold change (about 11) than its raw one (about 9.5). It has essentially zero counts in untreated samples and a few hundred in treated ones; DESeq2's raw estimate for such a gene is already pulled in by its own regularisation, and apeglm's posterior lands further out. Hover over the far upper left of the shrunken plot to find it. Shrinkage is not guaranteed to shrink; it moves estimates toward where the evidence says they should be.
+</div>
+
+## Which fold change to report
+
+- **Ranking genes and drawing plots**: shrunken. It stops noise from dominating the top of the list.
+- **Quoting a number for a particular gene**: the unshrunk estimate with its standard error or confidence interval, and the shrunken one alongside if you wish. Say which you used.
+- **Testing**: the test (`pvalue`, `padj`) is the same either way; `lfcShrink` does not change which genes are significant. `apeglm` can also give s-values, an alternative to adjusted p-values that account for the sign; the DESeq2 vignette explains them.
+
+## Diagnostics the MA plot gives you
+
+- The cloud should be **centred on zero** across the whole range. If it drifts up or down with expression level, normalization has failed, often because a few extremely abundant genes changed and dominate the library.
+- Significant genes (coloured) should appear at **all expression levels**, not only on the right. If only high-count genes are significant, the experiment lacks power for most of the transcriptome; more replicates, not more depth, is the remedy.

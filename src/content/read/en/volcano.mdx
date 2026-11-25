@@ -1,0 +1,39 @@
+---
+title: "Volcano plot: effect size against evidence"
+description: "Every tested gene in one picture. Move the thresholds and watch how many genes you would call, and learn what the shape of the cloud tells you."
+order: 2
+minutes: 8
+---
+import summary from "../../../data/summary.json";
+import VolcanoPlot from "../../../components/VolcanoPlot.astro";
+
+## The plot
+
+<VolcanoPlot lang="en">All {summary.genes_tested.toLocaleString("en-US")} tested genes from the airway analysis. x: log2 fold change (dexamethasone over untreated). y: −log10 of the adjusted p-value, so higher is stronger evidence. Red and blue: genes passing both thresholds.</VolcanoPlot>
+
+## Reading the axes
+
+**Horizontal** is the size of the change on a log2 scale. +1 means doubled, −1 means halved, +3 means eight times. A gene at 0 did not change. The scale is symmetric: going up four-fold and going down four-fold are the same distance from the centre, which is why log scales are used for fold changes.
+
+**Vertical** is the evidence, as −log10(padj). A value of 2 means padj = 0.01, 10 means padj = 10⁻¹⁰. The dashed horizontal line is the threshold you have set. Note the compression: the very top of the plot holds genes whose adjusted p-values differ by a hundred orders of magnitude, and it does not matter. Past a certain point, evidence is just "overwhelming".
+
+## What the thresholds do
+
+Drag the sliders. With padj below 0.05 and no fold-change requirement, {summary.sig_005.toLocaleString("en-US")} genes are called. Add |log2FC| above 1 and it falls to {summary.sig_005_lfc1}. The fold-change threshold is **not a statistical criterion**: it removes genes that changed significantly but by a small amount. Whether you want that depends on the question. For finding a drug's main targets, yes. For understanding a subtle shift in a pathway, a 30% change in fifty genes can matter more than a ten-fold change in one.
+
+Some journals still ask for "fold change above 2 and p below 0.05". Now you know what that filter does and can defend or reject it.
+
+## The shape of the cloud
+
+- **Symmetric left and right**: about as many genes go down as up. Dexamethasone represses and induces broadly. An asymmetric volcano is also common, for example a strong stress response with mostly induced genes.
+- **The wide base**: thousands of genes with small fold changes and no evidence. That is most of the transcriptome, unaffected.
+- **The arms**: genes with large changes *and* strong evidence form the upper arms. These are what you report.
+- **Far out but low**: points with |log2FC| above 3 but padj near 1. Low-count genes: 2 counts against 20 is a ten-fold change with no evidence. The MA plot shows where these live.
+
+## What the plot cannot tell you
+
+It does not show expression level: a gene with baseMean 10 and one with baseMean 10,000 look the same. It does not show the replicates: a point at log2FC = 2, padj = 10⁻⁵ could be four consistent donors or three flat ones and one extreme. Before you write about a gene, look at its counts (`plotCounts`).
+
+<div class="note">
+<strong>Code.</strong> <code>EnhancedVolcano(res, lab = res$symbol, x = "log2FoldChange", y = "padj", pCutoff = 0.05, FCcutoff = 1)</code>. Plot <code>padj</code> on the y axis, not <code>pvalue</code>; the latter overstates the evidence for every gene.
+</div>

@@ -1,0 +1,88 @@
+---
+title: "Raw reads: FASTQ files and quality control"
+description: "Download reads from the SRA, understand what a FASTQ record contains, and read a FastQC report without panicking."
+order: 3
+minutes: 20
+---
+import reads from "../../../data/reads.json";
+import samples from "../../../data/samples.json";
+
+## Getting the reads
+
+Every published RNA-seq dataset is deposited in the Sequence Read Archive (SRA) or its European mirror (ENA). The airway experiment is project **SRP033351**; each sample is one *run* with an `SRR` accession, listed in lesson 1.
+
+With `sra-tools` installed, one sample is downloaded like this:
+
+```bash
+mkdir -p raw && cd raw
+prefetch SRR1039508
+fasterq-dump --split-files --threads 4 SRR1039508
+gzip SRR1039508_1.fastq SRR1039508_2.fastq
+```
+
+`--split-files` matters: these libraries are **paired-end**, so each fragment was read from both ends and you get two files, `_1` and `_2`, in the same order. Expect several gigabytes per sample and a long download; this is why the lessons that follow show you outputs rather than asking you to run them first.
+
+<div class="note">
+<strong>Faster alternative.</strong> ENA serves the same reads as plain FASTQ over HTTPS. Search the run accession at <a href="https://www.ebi.ac.uk/ena/browser/">ebi.ac.uk/ena</a> and download the <code>fastq_ftp</code> links with <code>wget</code>. It is usually quicker than <code>fasterq-dump</code> outside the US.
+</div>
+
+## What a FASTQ record looks like
+
+A FASTQ file is plain text. Every read takes four lines. Here is one real read from the airway data, taken from the example files of `SRR1039508` that ship with the Bioconductor `airway` package:
+
+<pre><code>{`@${reads[0].name}/1
+${reads[0].seq}
++
+${reads[0].qual}`}</code></pre>
+
+1. **Header**, starting with `@`: the read name. The `/1` marks the first mate of the pair; its partner in the `_2` file has the same name.
+2. **Sequence**: the bases read, here {reads[0].seq.length} of them.
+3. A `+` line (sometimes repeating the name).
+4. **Quality string**: one character per base. Each character encodes a *Phred score*, the probability that the base is wrong, as `Q = -10 log10(P)`. The character's ASCII code minus 33 is the score. `J` is 41 (about 1 error in 12,000), `D` is 35, `#` is 2.
+
+Look at where the `D`s are in the quality string above: at the end of the read. That is the normal pattern of Illumina sequencing; quality falls towards the 3′ end. If you see it, nothing is wrong.
+
+The second read of the same pair starts a little further along the genome:
+
+<pre><code>{`@${reads[1].name}/2
+${reads[1].seq}
++
+${reads[1].qual}`}</code></pre>
+
+## How many reads is enough?
+
+The airway samples have between {Math.min(...samples.map((s) => s.libsize)).toLocaleString("en-US")} and {Math.max(...samples.map((s) => s.libsize)).toLocaleString("en-US")} aligned read pairs each. For differential expression of genes (not isoforms, not rare transcripts) in human or mouse, 15 to 30 million pairs per sample is a common and defensible depth. More replicates nearly always helps more than more depth.
+
+## FastQC
+
+FastQC produces an HTML report per file:
+
+```bash
+mkdir -p qc
+fastqc --threads 4 --outdir qc raw/*.fastq.gz
+multiqc --outdir qc qc
+```
+
+`multiqc` collects all the reports into one page, which is what you actually read. The modules, and how to react:
+
+| Module | Expected for RNA-seq | Act on it? |
+|---|---|---|
+| Per base sequence quality | high, falling slightly at the 3′ end | only if the median drops below Q20 early |
+| Per sequence quality scores | one peak above Q30 | a second low peak means a bad run or tile |
+| **Per base sequence content** | **fails or warns, always** | no: the first ~12 bases are biased by random-hexamer priming |
+| Per sequence GC content | a roughly normal curve | a second peak suggests contamination or rRNA |
+| **Sequence duplication levels** | **warns or fails** | no: highly expressed genes produce identical fragments; that is biology, not a library problem |
+| Overrepresented sequences | a few, often rRNA or mitochondrial | check what they are; adapter sequences mean trimming |
+| Adapter content | rises at the 3′ end if inserts are short | trim if it exceeds a few percent |
+
+<div class="warn">
+<strong>The most common beginner mistake</strong> is treating the FastQC traffic lights as pass/fail for the experiment. They were designed for whole-genome sequencing. For RNA-seq, "Per base sequence content" and "Duplication" are red on almost every good library. Read the plot, not the icon.
+</div>
+
+## What to write down
+
+For each sample, record from MultiQC: number of reads, read length, percent of bases with Q ≥ 30, GC percent, and adapter percent. A sample that stands out from the others on several of these is one you will want to watch in the PCA plot later.
+
+<div class="task">
+<strong>Exercise.</strong> Decode the first five quality characters of the first read above (<code>{reads[0].qual.slice(0, 5)}</code>) into Phred scores, using ASCII code minus 33. Then compute the implied error probability for the lowest one.
+</div>

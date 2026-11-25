@@ -1,0 +1,44 @@
+---
+title: "Heatmaps: patterns, not p-values"
+description: "What the colours mean, why rows are scaled, how to choose the genes, and the ways a heatmap can mislead."
+order: 8
+minutes: 7
+---
+import Heatmap from "../../../components/Heatmap.astro";
+
+## The plot
+
+<Heatmap lang="en">The 25 most variable genes across the eight airway samples after variance-stabilizing transformation. Each row is scaled to a z-score: red is above that gene's own mean, blue below.</Heatmap>
+
+## What the colours mean
+
+Almost every expression heatmap you see is **row-scaled**: each gene's values are centred on their mean and divided by their standard deviation. Red therefore means "high *for this gene*", not "highly expressed". A gene with counts of 10 and 30 and one with 1,000 and 3,000 look identical. This is deliberate: without scaling, the few most abundant genes would be red everywhere and everything else blue, and no pattern would be visible.
+
+Consequences: you cannot read expression level from a scaled heatmap, and you cannot compare the colour of gene A with gene B. Hover over a cell to see the actual transformed value next to the z-score.
+
+## Which genes
+
+The choice of rows decides what the heatmap shows, and it is where heatmaps mislead most.
+
+**Most variable genes** (this plot): whatever varies most across samples, for any reason. Here, several genes form blocks that follow the cell lines rather than treatment: they are donor-specific genes. That is a true and useful picture of the data, and it is why the design needs a `cell` term. But presenting this as "the response to dexamethasone" would be wrong.
+
+**Most significant genes** (smallest `padj`): shows the treatment response cleanly, with treated and untreated as two blocks. This is what belongs in a figure about the effect. It is also, in a sense, guaranteed: you chose genes that separate the groups, so they separate the groups. The heatmap illustrates the result; it is not evidence for it.
+
+**A gene set of interest** (a pathway, a list from another paper): the honest way to ask "what did this known set do?"
+
+Say in the caption which you used and how many genes.
+
+## Clustering
+
+Heatmaps usually come with dendrograms from hierarchical clustering. For the *samples*, clustering is a useful check: treated samples should cluster together. For the *genes*, the dendrogram groups genes with similar patterns and is mostly decoration; the cut into "clusters" is arbitrary. Clustering is sensitive to the distance measure and linkage method, and reordering rows and columns changes the visual impression completely while the data are unchanged.
+
+## Ways a heatmap misleads
+
+- **Red–green colour scales.** About 8% of men cannot distinguish them. Use blue–white–red or viridis.
+- **Unsymmetric colour range** that makes a mild effect look dramatic. Centre the scale on zero.
+- **Too many rows.** Beyond about 50 genes labels become unreadable and the plot is just texture. If you want to show 2,000 genes, show a summary instead.
+- **Scaling with a single outlier sample**, which forces every other sample to look the same colour. Check the PCA first.
+
+<div class="note">
+<strong>Code.</strong> <code>pheatmap(mat, scale = "row", annotation_col = ann, show_rownames = TRUE)</code> on <code>assay(vsd)[genes, ]</code>. The <code>ComplexHeatmap</code> package gives full control for publication figures.
+</div>

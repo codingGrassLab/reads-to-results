@@ -1,0 +1,147 @@
+---
+import "../styles/global.css";
+import Mark from "../components/Mark.astro";
+import { languages, langs, t, path, switchLang, type Lang } from "../i18n/ui";
+
+interface Props {
+  lang: Lang;
+  title?: string;
+  description?: string;
+  active?: "home" | "dataset" | "script" | "results" | "learn" | "read" | "methods" | "data" | "about";
+  noindex?: boolean;
+}
+const { lang, title, description, active, noindex = false } = Astro.props;
+const siteName = t(lang, "site.name");
+const pageTitle = title ? `${title} | ${siteName}` : `${siteName} | ${t(lang, "site.tagline")}`;
+const desc = description ?? t(lang, "site.description");
+const pathname = Astro.url.pathname;
+const canonical = new URL(pathname, Astro.site);
+
+const fontFamilies: Record<Lang, string> = { en: "" };
+const fontsHref =
+  "https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500" +
+  fontFamilies[lang] +
+  "&display=swap";
+
+const nav = [
+  { key: "dataset", href: path(lang, "dataset"), label: t(lang, "nav.dataset") },
+  { key: "script", href: path(lang, "script"), label: t(lang, "nav.script") },
+  { key: "results", href: path(lang, "results"), label: t(lang, "nav.results") },
+  { key: "methods", href: path(lang, "methods"), label: t(lang, "nav.methods") },
+  { key: "learn", href: path(lang, "learn"), label: t(lang, "nav.learn") },
+  { key: "read", href: path(lang, "read"), label: t(lang, "nav.read") },
+  { key: "data", href: path(lang, "data"), label: t(lang, "nav.data") },
+  { key: "about", href: path(lang, "about"), label: t(lang, "nav.about") },
+];
+const shortLang: Record<Lang, string> = { en: "EN" };
+const multi = langs.length > 1;
+const year = new Date().getFullYear();
+---
+<!doctype html>
+<html lang={lang}>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{pageTitle}</title>
+    <meta name="description" content={desc} />
+    {noindex && <meta name="robots" content="noindex, follow" />}
+    {!noindex && <link rel="canonical" href={canonical} />}
+    {!noindex && langs.map((l) => <link rel="alternate" hreflang={l} href={new URL(switchLang(pathname, l), Astro.site)} />)}
+    {!noindex && <link rel="alternate" hreflang="x-default" href={new URL(switchLang(pathname, "en"), Astro.site)} />}
+    <meta name="theme-color" content="#fbfbf9" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content={siteName} />
+    <meta property="og:title" content={pageTitle} />
+    <meta property="og:description" content={desc} />
+    <meta property="og:url" content={canonical} />
+    <meta property="og:image" content={new URL("/og.png", Astro.site)} />
+    <meta name="twitter:card" content="summary_large_image" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="preload" as="style" href={fontsHref} />
+    <link rel="stylesheet" href={fontsHref} media="print" onload="this.media='all'" />
+    <noscript><link rel="stylesheet" href={fontsHref} /></noscript>
+    <slot name="head" />
+  </head>
+  <body>
+    <a class="skip" href="#main">{t(lang, "common.skip")}</a>
+    <header class="site-header">
+      <div class="container bar">
+        <a class="brand" href={path(lang)} aria-label={siteName}><Mark size={30} /><span>{siteName}</span></a>
+        <nav class="nav" aria-label="Main">
+          <ul>{nav.map((n) => <li><a href={n.href} aria-current={active === n.key ? "page" : undefined}>{n.label}</a></li>)}</ul>
+          {multi && <div class="lang" role="group" aria-label={t(lang, "nav.language")}>
+            {langs.map((l) => <a href={switchLang(pathname, l)} hreflang={l} lang={l} aria-current={l === lang ? "true" : undefined} title={languages[l]}>{shortLang[l]}</a>)}
+          </div>}
+        </nav>
+        <button class="menu-btn" type="button" aria-expanded="false" aria-controls="mobile-nav" data-menu>
+          <span class="sr">{t(lang, "nav.menu")}</span>
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+        </button>
+      </div>
+      <div class="mobile-nav container" id="mobile-nav" hidden data-mobile>
+        <ul>
+          <li><a href={path(lang)} aria-current={active === "home" ? "page" : undefined}>{t(lang, "nav.home")}</a></li>
+          {nav.map((n) => <li><a href={n.href} aria-current={active === n.key ? "page" : undefined}>{n.label}</a></li>)}
+        </ul>
+        {multi && <div class="lang" role="group" aria-label={t(lang, "nav.language")}>
+          {langs.map((l) => <a href={switchLang(pathname, l)} hreflang={l} lang={l} aria-current={l === lang ? "true" : undefined}>{languages[l]}</a>)}
+        </div>}
+      </div>
+    </header>
+
+    <main id="main"><slot /></main>
+
+    <footer class="site-footer">
+      <div class="container">
+        <div class="row">
+          <div>
+            <div><Mark size={18} /> <strong>{siteName}</strong> · {year}</div>
+            <div>{t(lang, "footer.built")}</div>
+            <div>{t(lang, "footer.license")}</div>
+          </div>
+          <ul>
+            {nav.map((n) => <li><a href={n.href}>{n.label}</a></li>)}
+          </ul>
+        </div>
+      </div>
+    </footer>
+
+    <script>
+      const btn = document.querySelector<HTMLButtonElement>("[data-menu]");
+      const mob = document.querySelector<HTMLElement>("[data-mobile]");
+      btn?.addEventListener("click", () => {
+        const open = mob!.hidden;
+        mob!.hidden = !open;
+        btn.setAttribute("aria-expanded", String(open));
+      });
+      try { localStorage.setItem("lang", document.documentElement.lang); } catch {}
+
+      // copy buttons on code blocks
+      const label = ["Copy", "Copied"];
+      document.querySelectorAll<HTMLPreElement>("pre").forEach((pre) => {
+        const wrap = document.createElement("div");
+        wrap.className = "code";
+        pre.parentNode!.insertBefore(wrap, pre);
+        wrap.appendChild(pre);
+        const b = document.createElement("button");
+        b.type = "button"; b.className = "copy-btn"; b.textContent = label[0];
+        b.addEventListener("click", async () => {
+          try { await navigator.clipboard.writeText(pre.innerText); b.textContent = label[1]; setTimeout(() => (b.textContent = label[0]), 1500); } catch {}
+        });
+        wrap.appendChild(b);
+      });
+
+      // highlight the current heading in a lesson's table of contents
+      const toc = document.querySelectorAll<HTMLAnchorElement>("[data-toc] a");
+      if (toc.length) {
+        const heads = [...toc].map((a) => document.getElementById(decodeURIComponent(a.hash.slice(1)))).filter(Boolean) as HTMLElement[];
+        const io = new IntersectionObserver((es) => {
+          es.forEach((e) => { if (e.isIntersecting) { toc.forEach((a) => a.classList.toggle("on", a.hash === "#" + e.target.id)); } });
+        }, { rootMargin: "-80px 0px -70% 0px" });
+        heads.forEach((h) => io.observe(h));
+      }
+    </script>
+  </body>
+</html>

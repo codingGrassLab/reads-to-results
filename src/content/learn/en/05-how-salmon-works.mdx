@@ -1,0 +1,68 @@
+---
+title: "How Salmon works, and building the index"
+description: "What Salmon does with a read, why it needs a transcriptome rather than a genome, what decoys are for, and the exact commands to build an index."
+order: 5
+minutes: 20
+---
+import salmon from "../../../data/salmon.json";
+export const s = salmon.SRR1039508;
+
+## The problem Salmon solves
+
+To count reads per gene you must know where each read came from. The classical way is to **align** every read to the genome, base by base, allowing for introns, and then count alignments per gene. It works, but it is slow (tens of minutes per sample), needs 30 GB of memory for a human genome, and spends most of its effort on something you do not need: the exact position of every base of every read.
+
+Salmon's insight is that for quantification you only need to know **which transcript** a read is compatible with, not exactly where in it. So Salmon works against the **transcriptome**, the set of known mRNA sequences, and finds compatible transcripts quickly using an index of short sequences. The result is a table of estimated counts per transcript, in a few minutes, in 2 GB of memory. This is called *selective alignment* (older versions: quasi-mapping or pseudoalignment).
+
+## What happens to one read
+
+1. **k-mers.** Salmon breaks the read into overlapping pieces of length *k* (31 by default) and looks each one up in the index to find transcripts that contain them. The airway index holds {s.num_targets.toLocaleString("en-US")} transcripts.
+2. **Chaining and scoring.** Matching k-mers that line up along a transcript are chained together; since version 1.0 Salmon then scores the alignment properly (`--validateMappings`, now the default) and discards poor matches. In the shipped run, {s.num_filtered_vm.toLocaleString("en-US")} fragments were discarded this way.
+3. **Equivalence classes.** Reads that are compatible with the same set of transcripts are grouped. The two mates of a pair are treated together as one fragment. The run grouped its fragments into {s.num_eq_classes.toLocaleString("en-US")} equivalence classes.
+4. **Estimation.** Many reads are compatible with several transcripts of the same gene (isoforms share exons). Salmon resolves this with an expectation–maximisation algorithm: it starts with a guess of each transcript's abundance, assigns fractional reads to transcripts in proportion, re-estimates, and repeats until the estimates stop changing. The log of the shipped run shows exactly this: hundreds of iterations with a "max rel diff" falling each round.
+
+Step 4 is why `NumReads` in the output has decimals: a read shared by two isoforms contributes, say, 0.7 to one and 0.3 to the other.
+
+## Why a decoy-aware index
+
+A read that really came from an intron, an unannotated gene or a pseudogene may still match a known transcript partially. Against a transcriptome-only index, Salmon has nothing better to assign it to, and it inflates some transcript. The fix (Salmon ≥ 1.0) is to add the **genome as decoy sequences**: reads that match the genome better than any transcript are discarded rather than mis-assigned. Always build the index this way for a well-assembled genome.
+
+## Choosing a transcriptome
+
+Use the **same release** of transcriptome and annotation throughout a project, and write it down. Two common sources:
+
+- **GENCODE** (human and mouse): `gencode.vNN.transcripts.fa.gz`. Headers carry transcript and gene IDs separated by `|`; pass `--gencode` so Salmon keeps only the transcript ID. The shipped airway quantifications used GENCODE v29.
+- **Ensembl** (all species): `Homo_sapiens.GRCh38.cdna.all.fa.gz` plus `ncrna.fa.gz` if you want non-coding RNAs.
+
+## Building the index
+
+Once per project, in the `ref/` folder. For GENCODE human (replace `47` with the current release):
+
+```bash
+cd ref
+R=47
+wget https://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/release_${R}/gencode.v${R}.transcripts.fa.gz
+wget https://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/release_${R}/GRCh38.primary_assembly.genome.fa.gz
+wget https://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/release_${R}/gencode.v${R}.annotation.gtf.gz
+
+# decoy list: the names of the genome sequences
+grep "^>" <(gunzip -c GRCh38.primary_assembly.genome.fa.gz) | cut -d " " -f 1 | sed 's/>//' > decoys.txt
+# transcripts first, then genome
+cat gencode.v${R}.transcripts.fa.gz GRCh38.primary_assembly.genome.fa.gz > gentrome.fa.gz
+
+salmon index -t gentrome.fa.gz -d decoys.txt -i salmon_index --gencode -k 31 -p 8
+cd ..
+```
+
+This takes 30 to 60 minutes and about 20 GB of memory for human; the index is roughly 15 GB on disk. If that is too much for your machine, the `refgenie` project and the Salmon authors distribute prebuilt decoy-aware indexes; use one that matches your annotation release.
+
+`-k 31` is the default k-mer length and right for reads of 75 bp or longer. For very short reads (under 50 bp) use a smaller odd *k*, such as 23.
+
+## Things that go wrong at this stage
+
+- **Mixing sources.** A GENCODE transcriptome with an Ensembl GTF (or vice versa) leaves transcript IDs that do not match when you import to R. Take all three files from one release of one source.
+- **Forgetting `--gencode`.** Transcript names become `ENST...|ENSG...|...|` strings and `tximport` cannot match them.
+- **Indexing the genome alone.** Salmon is not a genome aligner; an index of the genome gives nothing useful.
+
+<div class="task">
+<strong>Check your understanding.</strong> A read matches exon 3 of a gene that has two isoforms, both containing exon 3. What does Salmon know about this read before the EM step, and what does it decide after it? Why can the answer be "0.5 reads to each"?
+</div>

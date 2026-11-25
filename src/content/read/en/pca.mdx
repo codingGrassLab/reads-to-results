@@ -1,0 +1,43 @@
+---
+title: "PCA: are the samples what the sample sheet says?"
+description: "How to read a principal component plot of RNA-seq samples, what the percentages mean, and what an outlier looks like."
+order: 1
+minutes: 8
+---
+import pca from "../../../data/pca.json";
+import PCAPlot from "../../../components/PCAPlot.astro";
+import DistanceMatrix from "../../../components/DistanceMatrix.astro";
+
+## The plot
+
+<PCAPlot lang="en">The eight airway samples after variance-stabilizing transformation. PC1 explains {pca.percentVar[0]}% of the variance between samples, PC2 {pca.percentVar[1]}%.</PCAPlot>
+
+## What it is
+
+Each sample is a point in a space with one axis per gene, about {(16000).toLocaleString("en-US")} axes. PCA finds the direction through that space along which samples differ most (PC1), then the direction at right angles to it with the next most variation (PC2), and so on. The plot shows the samples' positions along the first two. The percentages say how much of the total between-sample variation each axis captures.
+
+It is computed on **transformed** counts (`vst` or `rlog`), never on raw counts, because otherwise a handful of extremely high-count genes dominate every axis.
+
+## How to read it
+
+**Which factor is PC1?** Here the treated samples are all on the right and the untreated on the left: treatment is the largest source of variation. That is what you hope to see when the experiment worked. If PC1 had instead separated samples by processing date or by RNA quality, the experiment would have a batch problem that must be modelled.
+
+**What is PC2?** Hover over the points: samples of the same cell line share a vertical position. Donor identity is the second-largest effect, {pca.percentVar[1]}% of the variance, a third of the whole. That is a large nuisance effect, and the reason the design includes `cell`. Without that term, this variation would go into the error and reduce power for every gene.
+
+**Is anything alone?** No point is far from all the others. An outlier sample sits by itself, often on PC1, and you then have to decide whether it is biology (keep it) or a technical failure (investigate: library size, duplication, rRNA fraction, sex genes). Do not simply delete it; find out why.
+
+**Are the percentages big?** {pca.percentVar[0]}% on PC1 is large for a treatment effect in cultured cells. In tissue samples from patients, PC1 often explains 15 to 20% and is driven by cell-type composition rather than the condition of interest. A small PC1 does not mean no signal; it means the signal is spread across many smaller effects.
+
+## The same information as distances
+
+<DistanceMatrix lang="en">Euclidean distance between every pair of samples on the transformed data. Dark is similar. The pairs of a donor are close, and the four untreated samples are closer to each other than to any treated one.</DistanceMatrix>
+
+## Common misreadings
+
+- "The groups separate, so the genes are significant." PCA says nothing about individual genes. It says the samples differ overall; which genes do the work is the job of the differential test.
+- Reading distances between points on PC1 and PC2 as the whole story. Only {pca.percentVar[0] + pca.percentVar[1]}% of the variance is in this plot. Two samples can be close here and far apart on PC3.
+- Running PCA on the genes that came out significant, then being impressed that the groups separate. They were selected to separate; the plot is circular.
+
+<div class="note">
+<strong>Code.</strong> <code>vsd &lt;- vst(dds, blind = FALSE); plotPCA(vsd, intgroup = c("dex", "cell"))</code>. Add <code>returnData = TRUE</code> to get the coordinates and draw the plot yourself with ggplot2.
+</div>
