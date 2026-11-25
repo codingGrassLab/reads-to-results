@@ -3,8 +3,9 @@ import Base from "../../layouts/Base.astro";
 import { langs, path, type Lang } from "../../i18n/ui";
 export const getStaticPaths = () => langs.map((lang) => ({ params: { lang } }));
 const lang = Astro.params.lang as Lang;
-const title = "Dataset to sample sheet";
-const description = "Enter a GEO, SRA or ENA accession. Get the runs, their metadata and file sizes, build the sample sheet, and download the FASTQ download and Salmon scripts.";
+const title = "Find a dataset";
+const description = "Search GEO by topic, organism and date, or enter an accession. Then get the runs, their metadata and file sizes, build the sample sheet, and download the FASTQ download and Salmon scripts.";
+const organisms: [string, string][] = [["", "any organism"], ["Homo sapiens", "human"], ["Mus musculus", "mouse"], ["Rattus norvegicus", "rat"], ["Danio rerio", "zebrafish"], ["Drosophila melanogaster", "fruit fly"], ["Caenorhabditis elegans", "C. elegans"], ["Saccharomyces cerevisiae", "yeast"], ["Arabidopsis thaliana", "Arabidopsis"], ["Gallus gallus", "chicken"], ["Sus scrofa", "pig"], ["Bos taurus", "cattle"]];
 ---
 <Base lang={lang} title={title} description={description} active="dataset">
   <div class="container">
@@ -14,6 +15,24 @@ const description = "Enter a GEO, SRA or ENA accession. Get the runs, their meta
       <p class="small muted">Only the accession you type is sent, to the public EBI (ENA) and NCBI APIs. Nothing else leaves your browser.</p>
     </div>
 
+    <section class="ds-find">
+      <h2>Search GEO</h2>
+      <form class="ds-findform" data-find autocomplete="off">
+        <label class="grow">Topic, disease, tissue, treatment… <input name="q" placeholder="e.g. sarcopenia skeletal muscle, or dexamethasone airway" /></label>
+        <label>Organism <select name="org">{organisms.map(([v, n]) => <option value={v}>{n}</option>)}</select></label>
+        <label>Published from <input name="from" type="number" min="2005" max="2030" placeholder="year" style="width:6rem" /></label>
+        <label>Min. samples <input name="minN" type="number" min="1" value="6" style="width:5rem" /></label>
+        <label class="chk"><input type="checkbox" name="counts" /> only datasets with an NCBI-generated count matrix</label>
+        <label class="chk"><input type="checkbox" name="nosc" checked /> hide single-cell studies</label>
+        <button type="submit" class="btn btn-primary">Search</button>
+        <button type="button" class="btn btn-ghost" data-find-csv hidden>Results CSV</button>
+      </form>
+      <p class="ds-status small muted" data-find-status></p>
+      <div class="ds-results" data-find-results></div>
+      <div class="ds-pager" data-find-pager hidden><button type="button" class="btn btn-ghost" data-prev>← Previous</button><span class="small muted" data-pageinfo></span><button type="button" class="btn btn-ghost" data-next>Next →</button></div>
+    </section>
+
+    <h2 style="margin-top:2.5rem">Or enter an accession</h2>
     <form class="ds-search" data-form>
       <input name="acc" placeholder="GSE52778, SRP033351, PRJNA229998, ERP…" required autocomplete="off" spellcheck="false" />
       <button type="submit" class="btn btn-primary">Look up</button>
@@ -47,6 +66,25 @@ const description = "Enter a GEO, SRA or ENA accession. Get the runs, their meta
   </div>
 
   <style>
+    .ds-find { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 1.2rem 1.4rem 1.4rem; margin-top: 1rem; }
+    .ds-find h2 { margin: 0 0 0.8rem; font-size: 1.4rem; }
+    .ds-findform { display: flex; flex-wrap: wrap; gap: 0.7rem 1rem; align-items: flex-end; }
+    .ds-findform label { font-size: 0.85rem; color: var(--muted); display: flex; flex-direction: column; gap: 0.25rem; }
+    .ds-findform label.grow { flex: 1 1 320px; }
+    .ds-findform input:not([type="checkbox"]), .ds-findform select { padding: 0.5rem 0.7rem; font: inherit; font-size: 0.95rem; border: 1px solid var(--line-strong); border-radius: 8px; background: var(--bg); color: var(--ink); }
+    .ds-findform label.chk { flex-direction: row; align-items: center; gap: 0.4rem; }
+    .ds-results { display: grid; gap: 0.8rem; margin-top: 1rem; }
+    .ds-card { border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 0.9rem 1.1rem; background: var(--bg); }
+    .ds-card h3 { margin: 0.2rem 0 0.3rem; font-size: 1.05rem; font-family: var(--f-body); font-weight: 600; }
+    .ds-card .meta { font-size: 0.85rem; color: var(--muted); display: flex; flex-wrap: wrap; gap: 0.3rem 1rem; }
+    .ds-card .sum { font-size: 0.88rem; color: var(--text); margin: 0.5rem 0; }
+    .ds-card .samples { font-size: 0.8rem; color: var(--dim); }
+    .badge { display: inline-block; font-size: 0.72rem; padding: 0.1rem 0.5rem; border-radius: 999px; border: 1px solid var(--line-strong); color: var(--muted); margin-right: 0.3rem; }
+    .badge.ok { border-color: var(--accent); color: var(--accent); }
+    .badge.sc { border-color: var(--warn); color: var(--warn); }
+    .ds-card .acts { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 0.6rem; align-items: center; }
+    .ds-card .acts .btn { padding: 0.35rem 0.8rem; font-size: 0.85rem; }
+    .ds-pager { display: flex; gap: 1rem; align-items: center; margin-top: 1rem; }
     .ds-search { display: flex; gap: 0.6rem; flex-wrap: wrap; align-items: center; margin: 0.5rem 0; }
     .ds-search input { flex: 1 1 320px; padding: 0.65rem 0.9rem; font: inherit; font-size: 1.05rem; border: 1px solid var(--line-strong); border-radius: 999px; background: var(--surface); color: var(--ink); font-family: var(--f-mono); }
     .ds-search input:focus { outline: 2px solid var(--accent); border-color: transparent; }
@@ -196,6 +234,69 @@ const description = "Enter a GEO, SRA or ENA accession. Get the runs, their meta
     form.addEventListener("submit", (e) => { e.preventDefault(); lookup((form.elements.namedItem("acc") as HTMLInputElement).value); });
     $("[data-example]").addEventListener("click", () => { (form.elements.namedItem("acc") as HTMLInputElement).value = "GSE52778"; lookup("GSE52778"); });
     const q = new URLSearchParams(location.search).get("acc"); if (q) { (form.elements.namedItem("acc") as HTMLInputElement).value = q; lookup(q); }
+    // ── GEO search ──────────────────────────────────────────────────────
+    const EU = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/";
+    const ff = $<HTMLFormElement>("[data-find]"), fstatus = $<HTMLElement>("[data-find-status]"), fres = $<HTMLElement>("[data-find-results]"), pager = $<HTMLElement>("[data-find-pager]");
+    const fsay = (m: string, err = false) => { fstatus.textContent = m; fstatus.classList.toggle("err", err); };
+    const fv = (n: string) => (ff.elements.namedItem(n) as HTMLInputElement | HTMLSelectElement).value.trim();
+    const PAGE = 20;
+    let findState = { term: "", count: 0, start: 0, rows: [] as any[], countsIds: new Set<string>() };
+    const scRe = /single[- ]cell|scRNA|snRNA|10x genomics|chromium|drop-?seq|smart-?seq|single nuclei|single-nucleus/i;
+    function buildTerm() {
+      const parts: string[] = [];
+      const q = fv("q"); if (q) parts.push(`(${q})`);
+      const org = fv("org"); if (org) parts.push(`"${org}"[Organism]`);
+      parts.push(`"expression profiling by high throughput sequencing"[DataSet Type]`, `gse[Entry Type]`);
+      const from = fv("from"); if (from) parts.push(`${from}/01/01:3000/12/31[Publication Date]`);
+      if ((ff.elements.namedItem("counts") as HTMLInputElement).checked) parts.push(`"rnaseq counts"[Filter]`);
+      return parts.join(" AND ");
+    }
+    async function findPage(start: number) {
+      const term = buildTerm();
+      fsay("Searching GEO…"); pager.hidden = true;
+      try {
+        const es = await fetch(`${EU}esearch.fcgi?db=gds&term=${encodeURIComponent(term)}&retmode=json&retmax=${PAGE}&retstart=${start}&sort=date`).then((r) => r.json());
+        const ids: string[] = es.esearchresult?.idlist ?? []; const count = +(es.esearchresult?.count ?? 0);
+        if (!ids.length) { fres.innerHTML = ""; fsay(count ? "No more results." : "Nothing found. Try fewer words, or a broader term.", !count); $<HTMLElement>("[data-find-csv]").hidden = true; return; }
+        const sum = await fetch(`${EU}esummary.fcgi?db=gds&id=${ids.join(",")}&retmode=json`).then((r) => r.json());
+        // which of these have an NCBI-generated count matrix (one extra query, only when not already filtered)
+        let countsIds = new Set<string>(ids);
+        if (!(ff.elements.namedItem("counts") as HTMLInputElement).checked) {
+          const es2 = await fetch(`${EU}esearch.fcgi?db=gds&term=${encodeURIComponent(`(${ids.map((i) => i + "[UID]").join(" OR ")}) AND "rnaseq counts"[Filter]`)}&retmode=json&retmax=${PAGE}`).then((r) => r.json()).catch(() => null);
+          countsIds = new Set<string>(es2?.esearchresult?.idlist ?? []);
+        }
+        const minN = +fv("minN") || 0, hideSc = (ff.elements.namedItem("nosc") as HTMLInputElement).checked;
+        const rows = ids.map((i) => sum.result?.[i]).filter(Boolean).map((r: any) => ({
+          uid: r.uid, acc: r.accession, title: r.title, summary: r.summary || "", taxon: r.taxon, n: +r.n_samples || 0, date: (r.pdat || "").replace(/\//g, "-"), bioproject: r.bioproject || "",
+          sra: (r.extrelations || []).some((x: any) => x.relationtype === "SRA") || !!r.bioproject, counts: countsIds.has(String(r.uid)), sc: scRe.test(`${r.title} ${r.summary}`), samples: (r.samples || []).map((x: any) => x.title),
+        }));
+        findState = { term, count, start, rows, countsIds };
+        const shown = rows.filter((r) => r.n >= minN && !(hideSc && r.sc));
+        fres.innerHTML = shown.map((r) => `<div class="ds-card">
+          <div class="meta"><a href="https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=${r.acc}" target="_blank" rel="noopener"><b>${r.acc}</b></a><span>${esc(r.taxon)}</span><span>${r.n} samples</span><span>${r.date}</span>${r.bioproject ? `<span>${esc(r.bioproject)}</span>` : ""}</div>
+          <h3>${esc(r.title)}</h3>
+          <div>${r.counts ? `<span class="badge ok">NCBI count matrix</span>` : ""}${r.sra ? `<span class="badge ok">raw reads (SRA)</span>` : `<span class="badge">no SRA link</span>`}${r.sc ? `<span class="badge sc">single-cell?</span>` : ""}</div>
+          <p class="sum">${esc(r.summary.slice(0, 320))}${r.summary.length > 320 ? "…" : ""}</p>
+          ${r.samples.length ? `<p class="samples">Samples: ${esc(r.samples.slice(0, 6).join(" · "))}${r.samples.length > 6 ? ` · +${r.samples.length - 6} more` : ""}</p>` : ""}
+          <div class="acts"><button type="button" class="btn btn-primary" data-use="${r.acc}">Use this dataset →</button>${r.counts ? `<a class="btn btn-ghost" href="https://www.ncbi.nlm.nih.gov/geo/download/?type=rnaseq_counts&acc=${r.acc}" target="_blank" rel="noopener">NCBI counts ↗</a>` : ""}</div>
+        </div>`).join("");
+        fres.querySelectorAll<HTMLButtonElement>("[data-use]").forEach((b) => b.addEventListener("click", () => { (form.elements.namedItem("acc") as HTMLInputElement).value = b.dataset.use!; lookup(b.dataset.use!); setTimeout(() => $<HTMLElement>("[data-form]").scrollIntoView({ behavior: "smooth", block: "start" }), 100); }));
+        const hidden = rows.length - shown.length;
+        fsay(`${count.toLocaleString("en-US")} datasets match; showing ${start + 1}–${start + rows.length}${hidden ? ` (${hidden} on this page hidden by the sample/single-cell filters)` : ""}.`);
+        $<HTMLElement>("[data-find-csv]").hidden = false;
+        pager.hidden = count <= PAGE; $<HTMLButtonElement>("[data-prev]").disabled = start === 0; $<HTMLButtonElement>("[data-next]").disabled = start + PAGE >= count;
+        $("[data-pageinfo]").textContent = `page ${Math.floor(start / PAGE) + 1} of ${Math.ceil(count / PAGE)}`;
+      } catch (e) { fsay(`Search failed: ${(e as Error).message}`, true); }
+    }
+    ff.addEventListener("submit", (e) => { e.preventDefault(); findPage(0); });
+    $("[data-prev]").addEventListener("click", () => findPage(Math.max(0, findState.start - PAGE)));
+    $("[data-next]").addEventListener("click", () => findPage(findState.start + PAGE));
+    $("[data-find-csv]").addEventListener("click", () => {
+      const q = (s2: string) => `"${String(s2).replace(/"/g, '""')}"`;
+      const csv = ["accession,title,organism,samples,published,bioproject,ncbi_count_matrix,sra,single_cell_guess,geo_url", ...findState.rows.map((r) => [r.acc, q(r.title), q(r.taxon), r.n, r.date, r.bioproject, r.counts ? 1 : 0, r.sra ? 1 : 0, r.sc ? 1 : 0, `https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=${r.acc}`].join(","))].join("\n") + "\n";
+      dl("geo_search_results.csv", csv);
+    });
+    (window as any).__find = { findPage, get state() { return findState; } };
     (window as any).__ds = { get runs() { return runs; }, samplesCSV, bashDownload, salmonScript, lookup };
   </script>
 </Base>

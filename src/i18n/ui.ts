@@ -13,7 +13,7 @@ const ui = {
     "site.description":
       "Upload a DESeq2, edgeR or limma results table and download significant genes, journal-size volcano and MA plots, figure legends and methods text, all in your browser. With a complete worked analysis of a real dataset for anyone who wants to understand the steps.",
     "nav.home": "Home",
-    "nav.dataset": "Dataset",
+    "nav.dataset": "Find dataset",
     "nav.script": "Script",
     "nav.results": "Results",
     "nav.enrich": "Enrichment",
