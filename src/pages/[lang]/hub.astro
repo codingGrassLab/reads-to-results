@@ -56,6 +56,16 @@ const algoHelp: Record<string, string> = {
         <p class="caption" data-caption></p>
         <h2 style="margin-top:2rem">Top <span data-n-out>10</span> hub genes by <span data-algo-out>MCC</span></h2>
         <div class="table-wrap"><table class="hb-table"><thead><tr><th>Rank</th><th>Gene</th><th class="num" data-score-th>MCC</th><th class="num">Degree</th><th class="num">Betweenness</th><th class="num">Closeness</th><th class="num">Ranks in the other scores</th></tr></thead><tbody data-table></tbody></table></div>
+        <h2 style="margin-top:2.5rem">Consensus across scores</h2>
+        <p class="small muted">Pick several scores; each gives its own top N list (N above). Genes found by every chosen score are the consensus hubs; the Venn (2–3 scores) or UpSet plot (more) shows how the lists overlap.</p>
+        <div class="hb-cons">
+          <div class="hb-algos" data-cons-algos>{algorithms.map((a) => <label class="chk"><input type="checkbox" value={a} checked={["MCC", "Degree", "Betweenness", "Closeness"].includes(a)} /> {a}</label>)}</div>
+          <div class="hb-btns" style="margin:0.6rem 0"><button class="btn btn-ghost" data-cdl="svg">Overlap figure SVG</button><button class="btn btn-ghost" data-cdl="png">PNG 300 dpi</button><button class="btn btn-ghost" data-cdl="consensus">Consensus genes CSV</button><button class="btn btn-ghost" data-cdl="matrix">Membership matrix CSV</button></div>
+          <div class="hb-venn" data-venn></div>
+          <p class="caption" data-cons-caption></p>
+          <div class="table-wrap"><table class="hb-table"><thead><tr><th>Gene</th><th class="num">in how many lists</th><th>which scores</th></tr></thead><tbody data-cons-table></tbody></table></div>
+        </div>
+
         <div class="note small"><strong>What a hub is and is not.</strong> A hub is a node that is central in this network, nothing more. STRING networks over-represent well-studied genes, so hubs are often simply famous genes. Treat the list as candidates, show their fold changes and adjusted p-values next to the scores, and say which score and which cutoff you used.</div>
       </div>
     </section>
@@ -81,13 +91,18 @@ const algoHelp: Record<string, string> = {
     .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 0.4rem; }
     .caption { font-size: 0.88rem; color: var(--muted); user-select: all; }
     .hb-table td { font-size: 0.86rem; } .hb-table td.r { color: var(--dim); font-size: 0.76rem; }
+    .hb-algos { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 0.2rem 0.8rem; font-size: 0.86rem; color: var(--muted); }
+    .hb-algos label { display: flex; gap: 0.4rem; align-items: center; }
+    .hb-venn { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 0.5rem; max-width: 620px; }
+    .hb-venn svg { width: 100%; height: auto; }
     .btn.flash { background: var(--accent); color: #fff; }
   </style>
 
   <script>
     import cytoscape from "cytoscape";
     import { parseNetwork, buildGraph, scoreAll, rank, algorithms } from "../../scripts/hub.mjs";
-    import { download } from "../../scripts/deg";
+    import { download, svgToPng } from "../../scripts/deg";
+    import { vennSVG, upsetSVG, regions } from "../../scripts/venn";
     const $ = <T extends Element>(s: string) => document.querySelector<T>(s)!;
     const algoHelp: Record<string, string> = JSON.parse(document.getElementById("algo-help")!.textContent!);
     const drop = $<HTMLElement>("[data-drop]"), fileIn = $<HTMLInputElement>("[data-file]"), status = $<HTMLElement>("[data-status]"), main = $<HTMLElement>("[data-main]");
@@ -145,7 +160,39 @@ const algoHelp: Record<string, string> = {
       }
       if (relayout) cy.fit(undefined, 20);
       (window as any).__hub = { net, g, scores, top: top.map((i: number) => g.nodes[i]), algo, N };
+      renderConsensus();
     }
+    // consensus across several scores
+    let consSvg = "", consW = 120, consH = 80;
+    function renderConsensus() {
+      if (!g) return;
+      const N = Math.max(1, Math.min(parseInt(v("[data-n]")) || 10, g.nodes.length));
+      const chosen = Array.from(document.querySelectorAll<HTMLInputElement>("[data-cons-algos] input:checked")).map((c) => c.value);
+      const sets = chosen.map((a) => ({ name: a, items: rank(g, scores, a).slice(0, N).map((i: number) => g.nodes[i] as string) }));
+      const venn = $<HTMLElement>("[data-venn]"), tb = $<HTMLElement>("[data-cons-table]"), cap = $<HTMLElement>("[data-cons-caption]");
+      if (sets.length < 2) { venn.innerHTML = `<p class="muted small" style="margin:.5rem">Tick at least two scores.</p>`; tb.innerHTML = ""; cap.textContent = ""; consSvg = ""; return; }
+      const o = { widthMm: 120, fontPt: 8, title: `Top ${N} hub genes by ${sets.length} scores` };
+      consSvg = sets.length <= 3 ? vennSVG(sets, o) : upsetSVG(sets, o);
+      const m = consSvg.match(/height="([\d.]+)mm"/); consW = 120; consH = m ? parseFloat(m[1]) : 80;
+      venn.innerHTML = consSvg;
+      const reg = regions(sets), all = (1 << sets.length) - 1, consensus = reg.get(all) ?? [];
+      const rows: { gene: string; k: number; which: string[] }[] = [];
+      for (const [mask, items] of reg) { const which = sets.filter((_, i) => mask & (1 << i)).map((x) => x.name); for (const gene of items) rows.push({ gene, k: which.length, which }); }
+      rows.sort((a, b) => b.k - a.k || a.gene.localeCompare(b.gene));
+      tb.innerHTML = rows.map((r) => `<tr${r.k === sets.length ? ' style="background:var(--accent-soft)"' : ""}><td><b>${esc(r.gene)}</b></td><td class="num">${r.k} / ${sets.length}</td><td class="r">${r.which.join(" · ")}</td></tr>`).join("");
+      cap.textContent = `Overlap of the top ${N} hub genes ranked by ${sets.map((x) => x.name).join(", ")} (cytoHubba definitions). ${consensus.length} gene${consensus.length === 1 ? "" : "s"} ${consensus.length === 1 ? "is" : "are"} found by all ${sets.length} scores${consensus.length ? `: ${consensus.join(", ")}` : ""}.`;
+      (window as any).__cons = { sets, consensus, rows };
+    }
+    document.querySelectorAll<HTMLInputElement>("[data-cons-algos] input").forEach((c) => c.addEventListener("change", renderConsensus));
+    document.querySelectorAll<HTMLButtonElement>("[data-cdl]").forEach((b) => b.addEventListener("click", async () => {
+      const c = (window as any).__cons; if (!c || !consSvg) return;
+      const N = parseInt(v("[data-n]")) || 10, stem = `hub_consensus_top${N}_${c.sets.map((x: any) => x.name).join("-")}`;
+      if (b.dataset.cdl === "svg") download(`${stem}.svg`, consSvg, "image/svg+xml");
+      if (b.dataset.cdl === "png") { b.textContent = "Rendering…"; try { download(`${stem}_300dpi.png`, await svgToPng(consSvg, consW, consH, 300)); } catch { flash(b, "Failed"); return; } }
+      if (b.dataset.cdl === "consensus") download(`${stem}_consensus.csv`, ["gene,in_lists,of_lists,scores", ...c.rows.filter((r: any) => r.k === c.sets.length).map((r: any) => `${csvEsc(r.gene)},${r.k},${c.sets.length},${csvEsc(r.which.join(";"))}`)].join("\n") + "\n", "text/csv");
+      if (b.dataset.cdl === "matrix") download(`${stem}_membership.csv`, ["gene," + c.sets.map((x: any) => x.name).join(",") + ",in_lists", ...c.rows.map((r: any) => `${csvEsc(r.gene)},${c.sets.map((x: any) => (r.which.includes(x.name) ? 1 : 0)).join(",")},${r.k}`)].join("\n") + "\n", "text/csv");
+      flash(b, "Saved");
+    }));
     function components(gr: any) { const seen = new Array(gr.nodes.length).fill(false); let c = 0; for (let s = 0; s < gr.nodes.length; s++) { if (seen[s]) continue; c++; const st = [s]; seen[s] = true; while (st.length) { const x = st.pop()!; for (const y of gr.adj[x]) if (!seen[y]) { seen[y] = true; st.push(y); } } } return c; }
     const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;");
     $("[data-algo]").addEventListener("change", () => render(true)); $("[data-n]").addEventListener("input", () => render(true));

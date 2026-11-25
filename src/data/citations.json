@@ -180,5 +180,38 @@
   "issue": "W1",
   "pages": "W207-W212",
   "doi": "10.1093/nar/gkad347"
+ },
+ "cytohubba": {
+  "key": "chin2014cytohubba",
+  "authors": "Chin CH, Chen SH, Wu HH, Ho CW, Ko MT, Lin CY",
+  "title": "cytoHubba: identifying hub objects and sub-networks from complex interactome",
+  "journal": "BMC Systems Biology",
+  "year": 2014,
+  "volume": "8",
+  "issue": "Suppl 4",
+  "pages": "S11",
+  "doi": "10.1186/1752-0509-8-S4-S11"
+ },
+ "cytoscapejs": {
+  "key": "franz2016cytoscapejs",
+  "authors": "Franz M, Lopes CT, Huck G, Dong Y, Sumer O, Bader GD",
+  "title": "Cytoscape.js: a graph theory library for visualisation and analysis",
+  "journal": "Bioinformatics",
+  "year": 2016,
+  "volume": "32",
+  "issue": "2",
+  "pages": "309-311",
+  "doi": "10.1093/bioinformatics/btv557"
+ },
+ "string": {
+  "key": "szklarczyk2023string",
+  "authors": "Szklarczyk D, Kirsch R, Koutrouli M, et al.",
+  "title": "The STRING database in 2023: protein-protein association networks and functional enrichment analyses for any sequenced genome of interest",
+  "journal": "Nucleic Acids Research",
+  "year": 2023,
+  "volume": "51",
+  "issue": "D1",
+  "pages": "D638-D646",
+  "doi": "10.1093/nar/gkac1000"
  }
 }
