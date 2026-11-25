@@ -13,7 +13,7 @@ const defaultSources = ["GO:BP", "KEGG", "REAC", "WP"];
     <div class="page-head prose">
       <h1>{title}</h1>
       <p class="lead">{description}</p>
-      <p class="small muted"><strong>What leaves your browser:</strong> the gene identifiers you submit (and the background list) are sent to the public g:Profiler API at the University of Tartu when you press Run. No expression values, no file names. Do not submit gene lists you are not allowed to share.</p>
+      <p class="small muted"><strong>What leaves your browser:</strong> the gene identifiers you submit (and the background list) are sent to the public g:Profiler API at the University of Tartu when you press Run. No expression values, no file names. Do not submit gene lists you are not allowed to share. A KEGG "pathway map" link converts that term’s genes to Entrez IDs (g:Convert) and opens the map on kegg.jp with those IDs in the address; the map itself is KEGG’s and is shown on their site.</p>
     </div>
 
     <div class="en">
@@ -83,7 +83,7 @@ const defaultSources = ["GO:BP", "KEGG", "REAC", "WP"];
   </style>
 
   <script>
-    import { gprofiler, termsCSV, dotPlotSVG, enrichCaption, sourceNames, type Term, type EnrichOpts, type DotOpts } from "../../scripts/enrich";
+    import { gprofiler, termsCSV, dotPlotSVG, enrichCaption, sourceNames, toEntrez, keggMapURL, type Term, type EnrichOpts, type DotOpts } from "../../scripts/enrich";
     import { svgToPng, download } from "../../scripts/deg";
     const $ = <T extends Element>(s: string) => document.querySelector<T>(s)!;
     const form = $<HTMLFormElement>("[data-form]"), status = $<HTMLElement>("[data-status]"), out = $<HTMLElement>("[data-out]"), lists = $<HTMLElement>("[data-lists]");
@@ -158,7 +158,15 @@ const defaultSources = ["GO:BP", "KEGG", "REAC", "WP"];
         const svg = tq.length ? dotPlotSVG(tq, o) : "";
         sec.innerHTML = `<div class="en-head" style="align-items:flex-start"><div><h2>${esc(o.title)} <span class="muted small">· ${queries[q].length} genes, ${last.mapped[q]} recognised</span></h2><p class="small muted" style="margin:0 0 .4rem">Significant terms after the size filter: ${esc(perSource)}${srcF ? ` · showing ${esc(sourceNames[srcF] ?? srcF)}` : ""}. A zero means the source was tested and nothing passed the threshold.</p></div><div><button class="btn btn-ghost" data-x="svg">SVG</button><button class="btn btn-ghost" data-x="png">PNG 300 dpi</button><button class="btn btn-ghost" data-x="csv">CSV</button></div></div>` +
           (tq.length ? `<div class="en-fig">${svg}</div><p class="caption">${esc(enrichCaption(tq, q, o, eo, version, queries[q].length))}</p>` : `<p class="muted">No term passes the threshold for this list.</p>`) +
-          `<div class="table-wrap"><table class="en-table"><thead><tr><th>Term</th><th class="num">overlap / size</th><th class="num">fold</th><th class="num">adj. p</th><th>genes</th></tr></thead><tbody>${tq.slice(0, 60).map((t) => `<tr><td>${esc(t.name)}<div class="src">${esc(t.source)} · ${esc(t.id)}</div></td><td class="num">${t.overlap} / ${t.termSize}</td><td class="num">${t.fold.toFixed(2)}</td><td class="num">${t.p.toExponential(1)}</td><td class="genes">${esc(t.genes.slice(0, 12).map(sym).join(", "))}${t.genes.length > 12 ? ` +${t.genes.length - 12}` : ""}</td></tr>`).join("")}</tbody></table></div>${tq.length > 60 ? `<p class="small muted">Showing 60 of ${tq.length}; the CSV has all.</p>` : ""}`;
+          `<div class="table-wrap"><table class="en-table"><thead><tr><th>Term</th><th class="num">overlap / size</th><th class="num">fold</th><th class="num">adj. p</th><th>genes</th></tr></thead><tbody>${tq.slice(0, 60).map((t) => `<tr><td>${esc(t.name)}<div class="src">${esc(t.source)} · ${esc(t.id)}${t.source === "KEGG" ? ` · <a href="#" data-kegg="${esc(t.id)}" title="Open this pathway on kegg.jp with your genes highlighted">pathway map ↗</a>` : ""}</div></td><td class="num">${t.overlap} / ${t.termSize}</td><td class="num">${t.fold.toFixed(2)}</td><td class="num">${t.p.toExponential(1)}</td><td class="genes">${esc(t.genes.slice(0, 12).map(sym).join(", "))}${t.genes.length > 12 ? ` +${t.genes.length - 12}` : ""}</td></tr>`).join("")}</tbody></table></div>${tq.length > 60 ? `<p class="small muted">Showing 60 of ${tq.length}; the CSV has all.</p>` : ""}`;
+        sec.querySelectorAll<HTMLAnchorElement>("[data-kegg]").forEach((a) => a.addEventListener("click", async (ev) => {
+          ev.preventDefault();
+          const term = tq.find((t) => t.id === a.dataset.kegg); if (!term) return;
+          const o0 = a.textContent; a.textContent = "converting IDs…";
+          try { const ent = await toEntrez(eo.organism, term.genes); const url = keggMapURL(eo.organism, term.id, ent); window.open(url, "_blank", "noopener"); a.textContent = ent.length ? `pathway map ↗ (${ent.length} genes)` : "pathway map ↗ (no Entrez IDs found)"; }
+          catch { a.textContent = "could not convert IDs"; }
+          setTimeout(() => (a.textContent = o0), 4000);
+        }));
         sec.querySelectorAll<HTMLButtonElement>("[data-x]").forEach((b) => b.addEventListener("click", async () => {
           const stem = `enrichment_${q.replace(/[^a-z]/g, "")}${srcF ? "_" + srcF.replace(/[^A-Za-z]/g, "") : ""}`;
           if (b.dataset.x === "csv") { download(`${stem}.csv`, termsCSV(tq), "text/csv"); flash(b, "Saved"); }

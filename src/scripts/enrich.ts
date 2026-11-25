@@ -4,6 +4,23 @@ export interface Term { source: string; id: string; name: string; p: number; ter
 export interface EnrichOpts { organism: string; sources: string[]; method: "g_SCS" | "fdr" | "bonferroni"; threshold: number; background: string[] | null; noIEA: boolean }
 
 export const organisms: [string, string][] = [["hsapiens", "Homo sapiens (human)"], ["mmusculus", "Mus musculus (mouse)"], ["rnorvegicus", "Rattus norvegicus (rat)"], ["drerio", "Danio rerio (zebrafish)"], ["dmelanogaster", "Drosophila melanogaster"], ["celegans", "Caenorhabditis elegans"], ["scerevisiae", "Saccharomyces cerevisiae"], ["athaliana", "Arabidopsis thaliana"], ["ggallus", "Gallus gallus (chicken)"], ["sscrofa", "Sus scrofa (pig)"], ["btaurus", "Bos taurus (cattle)"]];
+/** KEGG organism codes for the organisms above. */
+export const keggOrg: Record<string, string> = { hsapiens: "hsa", mmusculus: "mmu", rnorvegicus: "rno", drerio: "dre", dmelanogaster: "dme", celegans: "cel", scerevisiae: "sce", athaliana: "ath", ggallus: "gga", sscrofa: "ssc", btaurus: "bta" };
+
+/** Convert gene identifiers to Entrez Gene IDs with g:Convert (for KEGG pathway maps). */
+export async function toEntrez(organism: string, ids: string[]): Promise<string[]> {
+  const r = await fetch("https://biit.cs.ut.ee/gprofiler/api/convert/convert/", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ organism, query: ids, target: "ENTREZGENE_ACC" }) });
+  if (!r.ok) throw new Error(`g:Convert returned ${r.status}`);
+  const j = await r.json();
+  return [...new Set((j.result ?? []).map((x: any) => x.converted).filter((v: string) => v && v !== "None" && /^\d+$/.test(v)))] as string[];
+}
+
+/** KEGG's own pathway map with the given Entrez genes highlighted (opens on kegg.jp; nothing is hosted here). */
+export function keggMapURL(organism: string, termId: string, entrez: string[]): string {
+  const code = keggOrg[organism] ?? "hsa", map = termId.replace(/^KEGG:/, "");
+  return `https://www.kegg.jp/kegg-bin/show_pathway?${code}${map}${entrez.length ? "+" + entrez.slice(0, 200).join("+") : ""}`;
+}
+
 export const sourceNames: Record<string, string> = { "GO:BP": "GO biological process", "GO:MF": "GO molecular function", "GO:CC": "GO cellular component", KEGG: "KEGG", REAC: "Reactome", WP: "WikiPathways", TF: "TRANSFAC motifs", MIRNA: "miRTarBase", HPA: "Human Protein Atlas", CORUM: "CORUM complexes", HP: "Human Phenotype Ontology" };
 
 /** Run g:GOSt for one or more gene lists. Returns terms and the API's version string. */
