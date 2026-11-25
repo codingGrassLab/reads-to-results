@@ -1,9 +1,7 @@
 ---
 import Base from "../../layouts/Base.astro";
-import Stats from "../../components/Stats.astro";
 import { langs, t, path, type Lang } from "../../i18n/ui";
 import { lessons, split } from "../../lib/lessons";
-import summary from "../../data/summary.json";
 export const getStaticPaths = () => langs.map((lang) => ({ params: { lang } }));
 const lang = Astro.params.lang as Lang;
 const learn = await lessons("learn", lang);
@@ -56,12 +54,6 @@ const read = await lessons("read", lang);
       <div>
         <h2>{t(lang, "home.dataTitle")}</h2>
         <p>{t(lang, "home.dataLead")}</p>
-        <Stats items={[
-          { value: 8, label: "samples, 4 donors × 2 treatments" },
-          { value: summary.genes_tested, label: "genes tested" },
-          { value: summary.sig_005, label: "changed at adjusted p below 0.05" },
-          { value: summary.sig_005_lfc1, label: "of those, more than two-fold" },
-        ]} />
       </div>
       <div class="note">
         <h3>{t(lang, "home.honest")}</h3>
