@@ -1,0 +1,21 @@
+cff-version: 1.2.0
+message: "If you use or adapt this course, please cite it as below."
+title: "Reads to Results: a free course in bulk RNA-seq analysis on real data"
+abstract: "A free course in bulk RNA-seq analysis. One real experiment (the airway dataset, Himes et al. 2014) is followed from raw reads to differentially expressed genes and pathways with Salmon and DESeq2, every command shown with its actual output, with interactive figures, a page of switches that show how design and metadata errors change the result, and ten common mistakes made on purpose on the same data."
+type: software
+authors:
+  - family-names: Chowdhury
+    given-names: Amarta
+    affiliation: "Shahjalal University of Science and Technology, Bangladesh"
+repository-code: "https://github.com/codingGrassLab/reads-to-results"
+url: "https://codinggrasslab.github.io/reads-to-results/"
+license: MIT
+version: "1.0.0"
+date-released: "2026-11-26"
+keywords:
+  - RNA-seq
+  - differential expression
+  - DESeq2
+  - Salmon
+  - bioinformatics education
+  - tutorial
