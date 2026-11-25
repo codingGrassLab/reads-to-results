@@ -78,6 +78,8 @@ const read = await lessons("read", lang);
   </div>
 
   <style>
+    .hero { grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); gap: 2.5rem; }
+    @media (max-width: 900px) { .hero { grid-template-columns: 1fr; } }
     .path { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.5rem; counter-reset: none; }
     .path a { display: flex; gap: 1rem; align-items: baseline; padding: 0.8rem 1rem; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--surface); text-decoration: none; color: var(--text); transition: border-color 0.15s, transform 0.15s; }
     .path a:hover { border-color: var(--accent); transform: translateX(3px); }
