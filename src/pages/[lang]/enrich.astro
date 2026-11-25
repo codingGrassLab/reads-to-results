@@ -6,7 +6,7 @@ export const getStaticPaths = () => langs.map((lang) => ({ params: { lang } }));
 const lang = Astro.params.lang as Lang;
 const title = "Enrichment";
 const description = "Which pathways and GO terms are over-represented among your differentially expressed genes? Up- and down-regulated lists tested separately, against the genes you actually tested as background, through the g:Profiler service.";
-const defaultSources = ["GO:BP", "KEGG", "REAC", "WP"];
+const defaultSources = ["GO:BP", "KEGG", "REAC"];
 ---
 <Base lang={lang} title={title} description={description} active="enrich">
   <div class="container">
@@ -68,8 +68,8 @@ const defaultSources = ["GO:BP", "KEGG", "REAC", "WP"];
     .en-sources label { margin: 0.2rem 0; }
     .en-status:empty { display: none; }
     .en-status.err { color: var(--up); }
-    .en-list { margin-bottom: 2.5rem; }
-    .en-head { display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap; margin-bottom: 0.5rem; }
+    .en-list { margin-bottom: 3.5rem; padding-bottom: 2rem; border-bottom: 1px solid var(--line); }
+    .en-head { display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap; margin-bottom: 0.8rem; }
     .en-head h2 { margin: 0; font-size: 1.4rem; }
     .en-head div { display: flex; gap: 0.5rem; }
     .en-head .btn { padding: 0.4rem 0.9rem; font-size: 0.85rem; }
@@ -81,7 +81,9 @@ const defaultSources = ["GO:BP", "KEGG", "REAC", "WP"];
     .caption { font-size: 0.85rem; color: var(--muted); user-select: all; margin: 0.6rem 0 0; }
     .btn.flash { background: var(--accent); color: #fff; }
     /* the map panel is created at runtime, so its rules are global */
-    .en-figblock { margin: 1.2rem 0 1.8rem; }
+    .en-figblock { margin: 2.2rem 0 2.6rem; }
+    .en-figblock .en-fig { margin-top: 0.6rem; }
+    .en-list > h3 { margin-top: 2.4rem; }
     :global(.kegg-frame) { border: 1px solid var(--line-strong); border-radius: var(--radius-sm); overflow: hidden; background: #fff; margin: 1rem 0; }
     :global(.kegg-bar) { display: flex; justify-content: space-between; gap: 1rem; flex-wrap: wrap; font-size: 0.82rem; color: var(--muted); padding: 0.45rem 0.8rem; background: var(--bg-2); border-bottom: 1px solid var(--line); }
     :global(.kegg-frame iframe) { width: 100%; height: 720px; border: 0; display: block; }
@@ -160,8 +162,8 @@ const defaultSources = ["GO:BP", "KEGG", "REAC", "WP"];
         const perSource = eo.sources.map((src) => `${sourceNames[src] ?? src} ${tAll.filter((t) => t.source === src).length}`).join(" · ");
         const sec = document.createElement("section"); sec.className = "en-list";
         const qTitle = q.charAt(0).toUpperCase() + q.slice(1);
-        sec.innerHTML = `<div class="en-head" style="align-items:flex-start"><div><h2>${esc(qTitle)} <span class="muted small">· ${queries[q].length} genes, ${last.mapped[q]} recognised</span></h2><p class="small muted" style="margin:0 0 .4rem">Significant terms after the size filter: ${esc(perSource)}. A zero means the source was tested and nothing passed the threshold.</p></div><div><button class="btn btn-ghost" data-x="csv">CSV, all sources</button></div></div><div data-figs></div>` +
-          `<h3 style="margin-top:1.5rem">Table${srcF ? ` · ${esc(sourceNames[srcF] ?? srcF)}` : ""}</h3><div class="table-wrap"><table class="en-table"><thead><tr><th>Term</th><th class="num">overlap / size</th><th class="num">fold</th><th class="num">adj. p</th><th>genes</th></tr></thead><tbody>${tq.slice(0, 60).map((t) => `<tr><td>${esc(t.name)}<div class="src">${esc(t.source)} · ${esc(t.id)}${t.source === "KEGG" ? ` · <a href="#" data-kegg="${esc(t.id)}" title="Open this pathway on kegg.jp with your genes highlighted">pathway map ↗</a>` : ""}</div></td><td class="num">${t.overlap} / ${t.termSize}</td><td class="num">${t.fold.toFixed(2)}</td><td class="num">${t.p.toExponential(1)}</td><td class="genes">${esc(t.genes.slice(0, 12).map(sym).join(", "))}${t.genes.length > 12 ? ` +${t.genes.length - 12}` : ""}</td></tr>`).join("")}</tbody></table></div>${tq.length > 60 ? `<p class="small muted">Showing 60 of ${tq.length}; the CSV has all.</p>` : ""}`;
+        sec.innerHTML = `<div class="en-head" style="align-items:flex-start"><div><h2>${esc(qTitle)} <span class="muted small">· ${queries[q].length} genes, ${last.mapped[q]} recognised</span></h2><p class="small muted" style="margin:0 0 1rem">Significant terms after the size filter: ${esc(perSource)}. A zero means the source was tested and nothing passed the threshold.</p></div><div><button class="btn btn-ghost" data-x="csv">CSV, all sources</button></div></div><div data-figs></div>` +
+          `<h3 style="margin-top:2.4rem">Table${srcF ? ` · ${esc(sourceNames[srcF] ?? srcF)}` : ""}</h3><div class="table-wrap"><table class="en-table"><thead><tr><th>Term</th><th class="num">overlap / size</th><th class="num">fold</th><th class="num">adj. p</th><th>genes</th></tr></thead><tbody>${tq.slice(0, 60).map((t) => `<tr><td>${esc(t.name)}<div class="src">${esc(t.source)} · ${esc(t.id)}${t.source === "KEGG" ? ` · <a href="#" data-kegg="${esc(t.id)}" title="Open this pathway on kegg.jp with your genes highlighted">pathway map ↗</a>` : ""}</div></td><td class="num">${t.overlap} / ${t.termSize}</td><td class="num">${t.fold.toFixed(2)}</td><td class="num">${t.p.toExponential(1)}</td><td class="genes">${esc(t.genes.slice(0, 12).map(sym).join(", "))}${t.genes.length > 12 ? ` +${t.genes.length - 12}` : ""}</td></tr>`).join("")}</tbody></table></div>${tq.length > 60 ? `<p class="small muted">Showing 60 of ${tq.length}; the CSV has all.</p>` : ""}`;
         // one publication figure per source: the figure a paper shows for GO, for KEGG, for Reactome…
         const figs = sec.querySelector("[data-figs]")!;
         for (const src of eo.sources) {
