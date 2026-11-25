@@ -30,7 +30,7 @@ const defaultSources = ["GO:BP", "KEGG", "REAC", "WP"];
           <legend>Settings</legend>
           <label>Organism <select name="organism">{organisms.map(([v, n]) => <option value={v}>{n}</option>)}</select></label>
           <div class="en-sources">{Object.entries(sourceNames).map(([k, n]) => <label class="chk"><input type="checkbox" name="src" value={k} checked={defaultSources.includes(k)} /> {n}</label>)}</div>
-          <label>Multiple-testing method <select name="method"><option value="g_SCS">g:SCS (g:Profiler default, accounts for term overlap)</option><option value="fdr">Benjamini–Hochberg FDR</option><option value="bonferroni">Bonferroni</option></select></label>
+          <label>Multiple-testing method <select name="method"><option value="fdr">Benjamini–Hochberg FDR (as in clusterProfiler, DAVID, ShinyGO)</option><option value="g_SCS">g:SCS (g:Profiler's own, stricter: accounts for term overlap)</option><option value="bonferroni">Bonferroni (strictest)</option></select></label>
           <label>Significance threshold <input type="number" name="threshold" value="0.05" step="any" min="0" max="1" /></label>
           <label>Term size: from <input type="number" name="minSize" value="10" min="1" style="width:5rem;display:inline-block" /> to <input type="number" name="maxSize" value="1000" min="1" style="width:6rem;display:inline-block" /> genes (filters the table and plot)</label>
           <label class="chk"><input type="checkbox" name="noIEA" /> exclude electronic GO annotations (IEA)</label>
