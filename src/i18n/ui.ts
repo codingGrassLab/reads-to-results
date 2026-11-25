@@ -53,8 +53,6 @@ const ui = {
     "read.title": "Reading results",
     "read.lead": "Each page takes one kind of plot or number, shows it on the airway data, and explains what it can and cannot tell you.",
     "about.title": "About",
-    "footer.built": "Static site. No tracking, no cookies, no server of our own.",
-    "footer.license": "Text under CC BY 4.0; code under MIT. Data from the airway Bioconductor package (Himes et al. 2014).",
     "404.title": "Page not found",
     "404.text": "That page does not exist. Start from the home page.",
   },

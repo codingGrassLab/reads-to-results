@@ -93,8 +93,6 @@ const year = new Date().getFullYear();
         <div class="row">
           <div>
             <div><Mark size={18} /> <strong>{siteName}</strong> · {year}</div>
-            <div>{t(lang, "footer.built")}</div>
-            <div>{t(lang, "footer.license")}</div>
           </div>
           <ul>
             {nav.map((n) => <li><a href={n.href}>{n.label}</a></li>)}
