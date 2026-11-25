@@ -9,18 +9,12 @@ export type T = Record<Lang, string>;
 const ui = {
   en: {
     "site.name": "Reads to Results",
-    "site.tagline": "Publication-ready figures, tables and methods text from your RNA-seq results",
+    "site.tagline": "Learn RNA-seq analysis on one real experiment, from raw reads to pathways",
     "site.description":
-      "Upload a DESeq2, edgeR or limma results table and download significant genes, journal-size volcano and MA plots, figure legends and methods text, all in your browser. With a complete worked analysis of a real dataset for anyone who wants to understand the steps.",
+      "A free course in bulk RNA-seq analysis: one real experiment followed from FASTQ files to differentially expressed genes and pathways with Salmon and DESeq2, every command with its actual output, and an interactive guide to reading the plots.",
     "nav.home": "Home",
-    "nav.dataset": "Find dataset",
-    "nav.run": "Run DESeq2",
-    "nav.results": "Results",
-    "nav.enrich": "Enrichment",
-    "nav.hub": "Hub genes",
     "nav.learn": "Course",
     "nav.read": "Reading plots",
-    "nav.methods": "Methods",
     "nav.data": "Data",
     "nav.about": "About",
     "nav.menu": "Menu",
@@ -54,7 +48,7 @@ const ui = {
       "Human airway smooth muscle cells from four donors, treated with the steroid dexamethasone or left untreated (Himes et al. 2014). Eight samples, a paired design, and a strong, well-understood signal.",
     "home.honest": "What this site does not do",
     "home.honestText":
-      "It does not run analyses in your browser, and it is not a replacement for the DESeq2 documentation. It shows one analysis done carefully, so you can do yours.",
+      "It does not run your analysis for you, and it is not a replacement for the DESeq2 or Salmon documentation. It shows one analysis done carefully, so you can do yours.",
     "learn.title": "The course",
     "learn.lead": "Follow one dataset from raw reads to pathways. Read in order the first time.",
     "read.title": "Reading results",

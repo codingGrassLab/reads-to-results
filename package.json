@@ -8,13 +8,11 @@
     "build": "astro build",
     "preview": "astro preview",
     "analysis": "Rscript analysis/run.R",
-    "test": "node scripts/test-data.mjs",
-    "test:hub": "node scripts/test-hub.mjs"
+    "test": "node scripts/test-data.mjs"
   },
   "dependencies": {
     "@astrojs/mdx": "^8.1.6",
     "@astrojs/sitemap": "^3.7.6",
-    "astro": "^7.4.13",
-    "cytoscape": "^3.35.0"
+    "astro": "^7.4.13"
   }
 }
