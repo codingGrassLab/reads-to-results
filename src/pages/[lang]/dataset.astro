@@ -12,7 +12,7 @@ const organisms: [string, string][] = [["", "any organism"], ["Homo sapiens", "h
     <div class="page-head prose">
       <h1>{title}</h1>
       <p class="lead">{description}</p>
-      <p class="small muted">Only the accession you type is sent, to the public EBI (ENA) and NCBI APIs. Nothing else leaves your browser.</p>
+      <p class="small muted">Only the accession or search words you type are sent, to NCBI's public E-utilities (GEO, SRA, BioProject). Nothing else leaves your browser.</p>
     </div>
 
     <section class="ds-find">
@@ -38,11 +38,6 @@ const organisms: [string, string][] = [["", "any organism"], ["Homo sapiens", "h
       <button type="submit" class="btn btn-primary">Look up</button>
       <button type="button" class="btn btn-ghost" data-example>Try GSE52778 (airway)</button>
     </form>
-    <div class="controls" role="radiogroup" style="margin:0.4rem 0 0.2rem">
-      <span class="small muted">Runs and files from:</span>
-      <label><input type="radio" name="src" value="ncbi" checked data-src /> NCBI SRA (like the SRA Run Selector; download with the SRA Toolkit)</label>
-      <label><input type="radio" name="src" value="ena" data-src /> ENA mirror (direct FASTQ links with MD5)</label>
-    </div>
     <p class="ds-status small muted" data-status></p>
 
     <section data-result hidden>
@@ -50,23 +45,22 @@ const organisms: [string, string][] = [["", "any organism"], ["Homo sapiens", "h
       <div class="stats" data-stats></div>
 
       <h2>Runs and sample sheet</h2>
-      <p class="small muted">Edit the <b>sample</b>, <b>condition</b> and <b>batch</b> columns; the condition guesses come from the sample titles and must be checked. Untick runs you do not want. Technical re-runs of one biological sample (same sample accession) are marked.</p>
+      <p class="small muted">Runs and metadata come from NCBI SRA (the same records as the SRA Run Selector). Edit the <b>sample</b>, <b>condition</b> and <b>batch</b> columns; the condition guesses come from the sample titles and must be checked. Untick runs you do not want. Technical re-runs of one biological sample (same BioSample) are marked.</p>
       <div class="table-wrap"><table class="ds-table" data-table>
-        <thead><tr><th></th><th>Run</th><th>Sample</th><th>Title</th><th>Layout</th><th class="num">Reads (M)</th><th class="num">Size (GB)</th><th>sample</th><th>condition</th><th>batch</th></tr></thead>
+        <thead><tr><th></th><th>Run</th><th>Sample</th><th>Title</th><th>Layout</th><th class="num">Reads (M)</th><th class="num">SRA size (GB)</th><th>sample</th><th>condition</th><th>batch</th></tr></thead>
         <tbody></tbody>
       </table></div>
 
       <div class="ds-actions">
         <button type="button" class="btn btn-primary" data-dl="samples">samples.csv</button>
-        <button type="button" class="btn btn-ghost" data-dl="bash">download.sh (curl + md5)</button>
-        <button type="button" class="btn btn-ghost" data-dl="ps1">download.ps1 (Windows)</button>
-        <button type="button" class="btn btn-ghost" data-dl="sra">sra.sh (prefetch / fasterq-dump)</button>
+        <button type="button" class="btn btn-ghost" data-dl="bash">download.sh (SRA Toolkit, Linux/macOS/WSL)</button>
+        <button type="button" class="btn btn-ghost" data-dl="ps1">download.ps1 (SRA Toolkit, Windows)</button>
         <button type="button" class="btn btn-ghost" data-dl="salmon">quantify.sh (fastp + Salmon)</button>
         <a class="btn btn-ghost" data-script-link href="#">Open the script generator with these columns →</a>
       </div>
 
       <details class="ds-preview"><summary class="small">Preview download.sh</summary><pre><code data-preview></code></pre></details>
-      <div class="note small"><strong>Before you download.</strong> Check the total size against your disk and connection; the numbers above are the compressed FASTQ sizes. For datasets with processed counts on GEO, you may not need the reads at all: open the GEO page (link above) and look under "Supplementary file".</div>
+      <div class="note small"><strong>Before you download.</strong> Check the total size against your disk and connection; the sizes above are the SRA archive sizes, and the FASTQ files written by fasterq-dump are larger (gzip brings them back down). The scripts need the <a href="https://github.com/ncbi/sra-tools/wiki">SRA Toolkit</a> (<code>conda install -c bioconda sra-tools</code>). For datasets with a processed count matrix on GEO you may not need the reads at all.</div>
     </section>
   </div>
 
@@ -108,98 +102,82 @@ const organisms: [string, string][] = [["", "any organism"], ["Homo sapiens", "h
   </style>
 
   <script>
-    type Run = { run: string; sample: string; alias: string; title: string; layout: string; strategy: string; instrument: string; reads: number; bases: number; fastq: string[]; bytes: number[]; md5: string[]; organism: string; on: boolean; name: string; condition: string; batch: string; tech: boolean };
+    type Run = { srp?: string; prj?: string; run: string; sample: string; alias: string; title: string; layout: string; strategy: string; instrument: string; reads: number; bases: number; fastq: string[]; bytes: number[]; md5: string[]; organism: string; on: boolean; name: string; condition: string; batch: string; tech: boolean };
     const $ = <T extends Element>(s: string) => document.querySelector<T>(s)!;
     const form = $<HTMLFormElement>("[data-form]"), status = $<HTMLElement>("[data-status]"), result = $<HTMLElement>("[data-result]");
     let runs: Run[] = [], study: Record<string, string> = {};
     const say = (m: string, err = false) => { status.textContent = m; status.classList.toggle("err", err); };
-    const ENA = "https://www.ebi.ac.uk/ena/portal/api/search";
-    const fields = "run_accession,sample_accession,sample_alias,sample_title,experiment_title,library_layout,library_strategy,library_source,instrument_model,read_count,base_count,fastq_ftp,fastq_bytes,fastq_md5,scientific_name,study_accession,secondary_study_accession";
+    const EUT = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/";
+    const ej = (path: string) => fetch(EUT + path).then((r) => { if (!r.ok) throw new Error(`NCBI returned ${r.status}`); return r.json(); });
 
-    async function enaJSON(params: Record<string, string>) {
-      const u = `${ENA}?${new URLSearchParams({ format: "json", limit: "0", ...params })}`;
-      const r = await fetch(u); if (!r.ok) throw new Error(`ENA returned ${r.status}`);
-      const t = await r.text(); return t.trim() ? JSON.parse(t) : [];
-    }
-    async function geoToSra(gse: string): Promise<{ srp: string; title: string; summary: string; n: number; taxon: string; type: string }> {
-      // In the GDS database a series GSEnnn has the UID 200000000 + nnn, so no search is needed.
+    // GEO series: in the GDS database a series GSEnnn has the UID 200000000 + nnn, so no search is needed
+    async function geoSeries(gse: string) {
       const uid = String(200000000 + Number(gse.slice(3)));
-      const e = await fetch(`https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esummary.fcgi?db=gds&id=${uid}&retmode=json`).then((r) => r.json());
+      const e = await ej(`esummary.fcgi?db=gds&id=${uid}&retmode=json`);
       const rec = e.result?.[uid];
       if (!rec || rec.accession !== gse) throw new Error(`${gse} was not found in GEO.`);
       const rel = (rec.extrelations ?? []).find((x: any) => x.relationtype === "SRA");
-      if (!rel && !rec.bioproject) throw new Error(`${gse} has no linked SRA project or BioProject in GEO (maybe only processed data). Check the GEO page.`);
-      return { srp: rel?.targetobject ?? "", prj: rec.bioproject ?? "", title: rec.title, summary: rec.summary, n: +rec.n_samples, taxon: rec.taxon, type: rec.gdstype, pdat: rec.pdat, samples: Object.fromEntries((rec.samples ?? []).map((x: any) => [x.accession, x.title])) as Record<string, string> };
+      if (!rel && !rec.bioproject) throw new Error(`${gse} has no linked SRA study or BioProject in GEO (maybe only processed data). Check the GEO page.`);
+      return { srp: rel?.targetobject ?? "", prj: rec.bioproject ?? "", title: rec.title, summary: rec.summary, n: +rec.n_samples, taxon: rec.taxon, pdat: rec.pdat, samples: Object.fromEntries((rec.samples ?? []).map((x: any) => [x.accession, x.title])) as Record<string, string> };
     }
-
-    // NCBI SRA "runinfo" for a BioProject: used when ENA has not mirrored a new study yet.
-    async function sraRuns(prj: string, gsmTitles: Record<string, string> = {}): Promise<{ rows: Run[]; count: number }> {
-      const es = await fetch(`https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi?db=sra&term=${prj}[BioProject]&usehistory=y&retmode=json`).then((r) => r.json());
+    // BioProject title and description, for studies that did not come through GEO
+    async function bioproject(prj: string): Promise<{ title: string; summary: string }> {
+      try {
+        const es = await ej(`esearch.fcgi?db=bioproject&term=${prj}[Project Accession]&retmode=json`);
+        const id = es.esearchresult?.idlist?.[0]; if (!id) return { title: "", summary: "" };
+        const su = await ej(`esummary.fcgi?db=bioproject&id=${id}&retmode=json`);
+        const r = su.result?.[id]; return { title: r?.project_title ?? "", summary: r?.project_description ?? "" };
+      } catch { return { title: "", summary: "" }; }
+    }
+    // NCBI SRA "runinfo" (the table behind the SRA Run Selector) for a search term
+    async function sraRuns(term: string, gsmTitles: Record<string, string> = {}): Promise<{ rows: Run[]; count: number }> {
+      const es = await ej(`esearch.fcgi?db=sra&term=${encodeURIComponent(term)}&usehistory=y&retmode=json`);
       const count = +(es.esearchresult?.count ?? 0);
       if (!count) return { rows: [], count: 0 };
-      const txt = await fetch(`https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi?db=sra&query_key=${es.esearchresult.querykey}&WebEnv=${es.esearchresult.webenv}&rettype=runinfo&retmode=text`).then((r) => r.text());
-      const lines = txt.trim().split(/\r?\n/).filter((l) => l && !l.startsWith("Run,ReleaseDate") || l.startsWith("Run,"));
+      const txt = await fetch(`${EUT}efetch.fcgi?db=sra&query_key=${es.esearchresult.querykey}&WebEnv=${es.esearchresult.webenv}&rettype=runinfo&retmode=text`).then((r) => r.text());
+      const lines = txt.trim().split(/\r?\n/).filter((l) => l.startsWith("Run,") || /^[SED]RR\d+,/.test(l));
+      if (!lines.length) return { rows: [], count };
       const head = lines[0].split(","), ix = (n: string) => head.indexOf(n);
       const seen: Record<string, number> = {};
-      const rows = lines.slice(1).filter((l) => l.startsWith("SRR") || l.startsWith("ERR") || l.startsWith("DRR")).map((l) => {
+      const rows = lines.slice(1).map((l) => {
         const f = l.split(","); const g = (n: string) => f[ix(n)] ?? "";
         const sample = g("BioSample") || g("Sample"); seen[sample] = (seen[sample] ?? 0) + 1;
         return { run: g("Run"), sample, alias: g("SampleName"), title: gsmTitles[g("SampleName")] || g("LibraryName") || g("SampleName") || "", layout: g("LibraryLayout"), strategy: g("LibraryStrategy"), instrument: g("Model"),
-          reads: +g("spots") || 0, bases: +g("bases") || 0, fastq: [], bytes: [Math.round((+g("size_MB") || 0) * 1e6)], md5: [], organism: g("ScientificName"),
+          reads: +g("spots") || 0, bases: +g("bases") || 0, fastq: [], bytes: [Math.round((+g("size_MB") || 0) * 1e6)], md5: [], organism: g("ScientificName"), srp: g("SRAStudy"), prj: g("BioProject"),
           on: /rna/i.test(g("LibraryStrategy")), name: g("Run"), condition: "", batch: "", tech: seen[sample] > 1 } as Run;
       }).sort((a, b) => a.run.localeCompare(b.run));
       return { rows, count };
     }
-    let viaSRA = false;
     async function lookup(accRaw: string) {
       const acc = accRaw.trim().toUpperCase();
       runs = []; study = {}; result.hidden = true;
       if (!acc) return;
       try {
         say("Looking up…");
-        let q = "", geo: any = null;
-        if (/^GSE\d+$/.test(acc)) { geo = await geoToSra(acc); q = geo.srp ? `secondary_study_accession=${geo.srp}` : `study_accession=${geo.prj}`; }
-        else if (/^[SED]RP\d+$/.test(acc)) q = `secondary_study_accession=${acc}`;
-        else if (/^PRJ[NED][AB]\d+$/.test(acc)) q = `study_accession=${acc}`;
-        else throw new Error("Enter a GEO series (GSE…), an SRA/ENA study (SRP…, ERP…, DRP…) or a BioProject (PRJNA…, PRJEB…).");
-        say("Looking up runs in ENA… (the EBI API can take 10–30 seconds)");
-        const [st, rr] = await Promise.all([
-          enaJSON({ result: "study", query: q, fields: "study_accession,secondary_study_accession,study_title,study_description" }),
-          enaJSON({ result: "read_run", query: q, fields }),
-        ]);
-        viaSRA = false;
-        let rows: Run[] | null = null;
-        const wantNCBI = (document.querySelector('[data-src][value="ncbi"]') as HTMLInputElement)?.checked;
-        if (wantNCBI) {
-          const prj = geo?.prj || st[0]?.study_accession || (/^PRJ/.test(acc) ? acc : "");
-          if (!prj) throw new Error("NCBI SRA needs a BioProject; none was found for this accession. Use ENA instead.");
-          say("Asking NCBI SRA…");
-          const sr = await sraRuns(prj, geo?.samples ?? {});
-          if (!sr.rows.length) throw new Error(`${acc} (${prj}) has no sequencing runs in NCBI SRA.`);
-          rows = sr.rows; viaSRA = true;
-        } else if (!rr.length) {
-          // ENA mirrors NCBI with a delay of days to weeks; ask NCBI SRA directly
-          const prj = geo?.prj || (/^PRJ/.test(acc) ? acc : "");
-          if (prj) {
-            say("Not in ENA yet; asking NCBI SRA…");
-            const sr = await sraRuns(prj, geo?.samples ?? {});
-            if (sr.rows.length) { rows = sr.rows; viaSRA = true; }
-            else throw new Error(`${acc} (${prj}) has no sequencing runs in ENA or NCBI SRA yet${geo?.pdat ? `; GEO lists it as public since ${geo.pdat}` : ""}. Reads often appear a few days after the GEO release, or the submitter deposited processed data only. Check the GEO page.`);
-          } else throw new Error(`No sequencing runs found for ${acc} in ENA.`);
+        let term = "", geo: any = null;
+        if (/^GSE\d+$/.test(acc)) { geo = await geoSeries(acc); term = geo.prj ? `${geo.prj}[BioProject]` : `${geo.srp}[Study]`; }
+        else if (/^[SED]RP\d+$/.test(acc)) term = `${acc}[Study]`;
+        else if (/^PRJ[NED][AB]\d+$/.test(acc)) term = `${acc}[BioProject]`;
+        else throw new Error("Enter a GEO series (GSE…), an SRA study (SRP…, ERP…, DRP…) or a BioProject (PRJNA…, PRJEB…).");
+        say("Fetching the run table from NCBI SRA…");
+        const sr = await sraRuns(term, geo?.samples ?? {});
+        if (!sr.rows.length) throw new Error(`${acc}${geo?.prj ? ` (${geo.prj})` : ""} has no sequencing runs in NCBI SRA${geo?.pdat ? `; GEO lists it as public since ${geo.pdat}` : ""}. Reads often appear a few days after a GEO release, or the submitter deposited processed data only.`);
+        runs = sr.rows;
+        const prj = geo?.prj || (runs[0] as any).prj || (/^PRJ/.test(acc) ? acc : "");
+        // an SRA/BioProject accession that came from GEO: fetch the GEO sample titles, which carry the conditions
+        if (!geo && runs.some((r) => /^GSM\d+$/.test(r.alias))) {
+          try {
+            const es = await ej(`esearch.fcgi?db=gds&term=${encodeURIComponent(`(${acc}[All Fields] OR ${prj}[All Fields]) AND gse[Entry Type]`)}&retmode=json`);
+            const uid = es.esearchresult?.idlist?.[0];
+            if (uid) { const su = await ej(`esummary.fcgi?db=gds&id=${uid}&retmode=json`); const rec = su.result?.[uid]; if (rec?.accession) { geo = { ...rec, prj, srp: "", title: rec.title, summary: rec.summary, samples: Object.fromEntries((rec.samples ?? []).map((x: any) => [x.accession, x.title])) }; for (const r of runs) if (geo.samples[r.alias]) r.title = geo.samples[r.alias]; } }
+          } catch { /* no GEO record: keep the SRA names */ }
         }
-        study = { acc, title: geo?.title || st[0]?.study_title || "", srp: st[0]?.secondary_study_accession || "", prj: st[0]?.study_accession || geo?.prj || "", geo: geo ? acc : "", summary: geo?.summary || st[0]?.study_description || "" };
-        const seen: Record<string, number> = {};
-        runs = rows ?? rr.map((x: any) => {
-          seen[x.sample_accession] = (seen[x.sample_accession] ?? 0) + 1;
-          return { run: x.run_accession, sample: x.sample_accession, alias: x.sample_alias, title: x.sample_title || x.experiment_title || "", layout: x.library_layout, strategy: x.library_strategy, instrument: x.instrument_model,
-            reads: +x.read_count || 0, bases: +x.base_count || 0, fastq: (x.fastq_ftp || "").split(";").filter(Boolean), bytes: (x.fastq_bytes || "").split(";").map(Number), md5: (x.fastq_md5 || "").split(";"), organism: x.scientific_name,
-            on: /rna/i.test(x.library_strategy || ""), name: x.run_accession, condition: "", batch: "", tech: seen[x.sample_accession] > 1 } as Run;
-        }).sort((a: Run, b: Run) => a.run.localeCompare(b.run));
-        if (viaSRA) runs.sort((a, b) => a.run.localeCompare(b.run));
+        const bp = geo ? { title: geo.title, summary: geo.summary } : await bioproject(prj);
+        study = { acc, title: bp.title, srp: (runs[0] as any).srp || geo?.srp || (/^[SED]RP/.test(acc) ? acc : ""), prj, geo: geo?.accession || (geo ? acc : ""), summary: bp.summary };
         guessConditions();
         render();
         const off = runs.filter((r) => !r.on).length;
-        say(`${runs.length} runs from ${viaSRA ? "NCBI SRA (no direct FASTQ links or MD5s from this source; use sra.sh, which downloads with the SRA Toolkit)" : "ENA"}${geo ? `, via GEO → ${geo.srp || geo.prj}` : ""}.${off ? ` ${off} non-RNA-seq runs (${[...new Set(runs.filter((r) => !r.on).map((r) => r.strategy))].join(", ")}) are unticked.` : ""}`);
+        say(`${runs.length} runs from NCBI SRA${geo ? `, via GEO → ${prj}` : ""}.${off ? ` ${off} non-RNA-seq runs (${[...new Set(runs.filter((r) => !r.on).map((r) => r.strategy))].join(", ")}) are unticked.` : ""}`);
       } catch (e) { say((e as Error).message, true); }
     }
 
@@ -226,7 +204,7 @@ const organisms: [string, string][] = [["", "any organism"], ["Homo sapiens", "h
     const fmtGB = (b: number) => (b / 1e9).toFixed(2);
     function render() {
       const s = study;
-      $("[data-study]").innerHTML = `<h2>${esc(s.title)}</h2><p class="small muted">${s.geo ? `GEO <a href="https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=${s.geo}">${s.geo}</a> · ` : ""}SRA <a href="https://www.ebi.ac.uk/ena/browser/view/${s.srp}">${s.srp}</a> · BioProject <a href="https://www.ebi.ac.uk/ena/browser/view/${s.prj}">${s.prj}</a> · ${esc(runs[0]?.organism ?? "")} · ${esc(runs[0]?.instrument ?? "")}</p>${s.summary ? `<p class="small">${esc(s.summary).slice(0, 700)}${s.summary.length > 700 ? "…" : ""}</p>` : ""}`;
+      $("[data-study]").innerHTML = `<h2>${esc(s.title || s.acc)}</h2><p class="small muted">${s.geo ? `GEO <a href="https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=${s.geo}">${s.geo}</a> · ` : ""}${s.srp ? `SRA <a href="https://www.ncbi.nlm.nih.gov/sra/?term=${s.srp}">${s.srp}</a> · <a href="https://www.ncbi.nlm.nih.gov/Traces/study/?acc=${s.srp}">Run Selector</a> · ` : ""}${s.prj ? `BioProject <a href="https://www.ncbi.nlm.nih.gov/bioproject/${s.prj}">${s.prj}</a> · ` : ""}${esc(runs[0]?.organism ?? "")} · ${esc(runs[0]?.instrument ?? "")}</p>${s.summary ? `<p class="small">${esc(s.summary).slice(0, 700)}${s.summary.length > 700 ? "…" : ""}</p>` : ""}`;
       const tb = $<HTMLTableSectionElement>("[data-table] tbody");
       tb.innerHTML = runs.map((r, i) => `<tr class="${r.on ? "" : "off"}"><td><input type="checkbox" data-on="${i}" ${r.on ? "checked" : ""}></td><td><code>${r.run}</code>${r.tech ? `<div class="tech">re-run of ${r.sample}</div>` : ""}</td><td>${esc(r.alias || r.sample)}</td><td class="title">${esc(r.title)}</td><td>${r.layout === "PAIRED" ? "paired" : "single"}${r.strategy !== "RNA-Seq" ? ` <span class="tech">${esc(r.strategy)}</span>` : ""}</td><td class="num">${(r.reads / 1e6).toFixed(1)}</td><td class="num">${fmtGB(r.bytes.reduce((a, b) => a + b, 0))}</td><td><input data-f="name" data-i="${i}" value="${esc(r.name)}"></td><td><input data-f="condition" data-i="${i}" value="${esc(r.condition)}"></td><td><input data-f="batch" data-i="${i}" value="${esc(r.batch)}"></td></tr>`).join("");
       tb.querySelectorAll<HTMLInputElement>("[data-on]").forEach((c) => c.addEventListener("change", () => { runs[+c.dataset.on!].on = c.checked; c.closest("tr")!.classList.toggle("off", !c.checked); stats(); preview(); }));
@@ -235,39 +213,38 @@ const organisms: [string, string][] = [["", "any organism"], ["Homo sapiens", "h
     }
     function stats() {
       const on = runs.filter((r) => r.on);
-      const gb = on.reduce((a, r) => a + (r.fastq.length ? filesOf(r).reduce((x, [, k]) => x + (r.bytes[k] || 0), 0) : r.bytes.reduce((x, y) => x + y, 0)), 0) / 1e9, reads = on.reduce((a, r) => a + r.reads, 0) / 1e6;
+      const gb = on.reduce((a, r) => a + r.bytes.reduce((x, y) => x + y, 0), 0) / 1e9, reads = on.reduce((a, r) => a + r.reads, 0) / 1e6;
       const conds = [...new Set(on.map((r) => r.condition).filter(Boolean))];
-      $("[data-stats]").innerHTML = [[on.length, "runs selected"], [new Set(on.map((r) => r.sample)).size, "biological samples"], [reads.toFixed(0), "million reads"], [gb.toFixed(1), viaSRA ? "GB in SRA format" : "GB of FASTQ"], [conds.length || "–", `conditions${conds.length ? ": " + conds.join(", ") : ""}`]].map(([v, l]) => `<div class="stat"><b>${v}</b><span>${esc(String(l))}</span></div>`).join("");
+      $("[data-stats]").innerHTML = [[on.length, "runs selected"], [new Set(on.map((r) => r.sample)).size, "biological samples"], [reads.toFixed(0), "million reads"], [gb.toFixed(1), "GB (SRA archives)"], [conds.length || "–", `conditions${conds.length ? ": " + conds.join(", ") : ""}`]].map(([v, l]) => `<div class="stat"><b>${v}</b><span>${esc(String(l))}</span></div>`).join("");
       const a = $<HTMLAnchorElement>("[data-script-link]");
       const p = new URLSearchParams({ input: "salmon", sampleCol: "sample", conditionCol: "condition", batchCol: on.some((r) => r.batch) ? "batch" : "", refLevel: conds[0] ?? "", trtLevel: conds[1] ?? "", minSamples: String(Math.max(1, Math.min(...conds.map((c) => on.filter((r) => r.condition === c).length).concat([3])))) });
       a.href = `../script/?${p}`;
     }
     const esc = (s: string) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
     const sel = () => runs.filter((r) => r.on);
-    // for paired runs ENA sometimes lists a third file of orphan (unpaired) reads; the quantification uses only _1 and _2
-    const filesOf = (r: Run) => (r.layout === "PAIRED" && r.fastq.length > 2 ? r.fastq.map((f, k) => [f, k] as const).filter(([f]) => /_[12]\.fastq\.gz$/.test(f)) : r.fastq.map((f, k) => [f, k] as const));
 
-    function samplesCSV() { const hasB = sel().some((r) => r.batch); return ["sample,run,condition" + (hasB ? ",batch" : "") + ",sample_accession,title,layout", ...sel().map((r) => [r.name, r.run, r.condition, ...(hasB ? [r.batch] : []), r.sample, `"${r.title.replace(/"/g, '""')}"`, r.layout.toLowerCase()].join(","))].join("\n") + "\n"; }
+    function samplesCSV() { const hasB = sel().some((r) => r.batch); return ["sample,run,condition" + (hasB ? ",batch" : "") + ",biosample,title,layout", ...sel().map((r) => [r.name, r.run, r.condition, ...(hasB ? [r.batch] : []), r.sample, `"${r.title.replace(/"/g, '""')}"`, r.layout.toLowerCase()].join(","))].join("\n") + "\n"; }
+    const toolkitNote = (prefix: string) => [`${prefix} Needs the SRA Toolkit: conda install -c bioconda sra-tools   (or https://github.com/ncbi/sra-tools/wiki)`, `${prefix} prefetch downloads the .sra archive, fasterq-dump converts it to FASTQ (paired runs → _1 and _2), then the FASTQ is gzipped.`, `${prefix} Resumable: runs that already have their FASTQ files are skipped.`];
     function bashDownload() {
-      if (viaSRA) return `# ${study.acc}: runs were taken from NCBI SRA, which gives no direct FASTQ links or MD5 sums.
-# Use sra.sh (SRA Toolkit: prefetch + fasterq-dump), or switch the source to ENA for direct links.
-`;
-      const L = ["#!/usr/bin/env bash", `# FASTQ download for ${study.acc}: ${sel().length} runs, ${fmtGB(sel().reduce((a, r) => a + r.bytes.reduce((x, y) => x + y, 0), 0))} GB`, "# Generated by Reads to Results. Files come from the ENA mirror; each is checked against its MD5.", "# For paired runs only the _1 and _2 files are taken (ENA sometimes adds a file of unpaired reads).", "set -euo pipefail", "mkdir -p raw && cd raw", ""];
-      for (const r of sel()) { filesOf(r).forEach(([f, k]) => { const name = f.split("/").pop(); L.push(`curl -L -C - -o ${name} "https://${f}"`, `echo "${r.md5[k]}  ${name}" | md5sum -c -`); }); }
-      L.push("", 'echo "All files downloaded and verified."'); return L.join("\n") + "\n";
+      const L = ["#!/usr/bin/env bash", `# FASTQ download for ${study.acc}: ${sel().length} runs, ${fmtGB(sel().reduce((a, r) => a + r.bytes.reduce((x, y) => x + y, 0), 0))} GB of SRA archives. Generated by Reads to Results.`, ...toolkitNote("#"), "set -euo pipefail", "THREADS=4", "mkdir -p raw && cd raw", ""];
+      for (const r of sel()) {
+        const done = r.layout === "PAIRED" ? `[ -s ${r.run}_1.fastq.gz ] && [ -s ${r.run}_2.fastq.gz ]` : `[ -s ${r.run}.fastq.gz ]`;
+        L.push(`# ${r.run}  ${r.title}`, `if ${done}; then echo "${r.run}: already done"; else`, `  prefetch --max-size u ${r.run}`, `  fasterq-dump ${r.layout === "PAIRED" ? "--split-files " : ""}--threads $THREADS ${r.run}`, `  gzip -f ${r.run}*.fastq`, `  rm -rf ${r.run}`, `fi`, "");
+      }
+      L.push('echo "All runs downloaded."'); return L.join("\n") + "\n";
     }
     function psDownload() {
-      if (viaSRA) return `# ${study.acc}: runs from NCBI SRA; no direct FASTQ links. Use sra.sh (SRA Toolkit) or switch the source to ENA.
-`;
-      const L = [`# FASTQ download for ${study.acc} (PowerShell). Generated by Reads to Results.`, "$ErrorActionPreference = 'Stop'", "New-Item -ItemType Directory -Force raw | Out-Null", "Set-Location raw", ""];
-      for (const r of sel()) { filesOf(r).forEach(([f, k]) => { const name = f.split("/").pop(); L.push(`curl.exe -L -C - -o ${name} "https://${f}"`, `if ((Get-FileHash ${name} -Algorithm MD5).Hash -ne "${r.md5[k].toUpperCase()}") { throw "MD5 mismatch: ${name}" }`); }); }
-      L.push("", 'Write-Host "All files downloaded and verified."'); return L.join("\n") + "\n";
-    }
-    function sraScript() { const paired = sel().some((r) => r.layout === "PAIRED"); return ["#!/usr/bin/env bash", `# SRA Toolkit download for ${study.acc}. Generated by Reads to Results.`, "set -euo pipefail", "mkdir -p raw && cd raw", `for run in ${sel().map((r) => r.run).join(" ")}; do`, "  prefetch $run", `  fasterq-dump ${paired ? "--split-files " : ""}--threads 4 $run`, "  gzip -f ${run}*.fastq", "done"].join("\n") + "\n"; }
-    function salmonScript() {
-      const L = ["#!/usr/bin/env bash", `# fastp + Salmon quantification for ${study.acc}. Generated by Reads to Results.`, "# Needs: conda env with fastp, salmon, multiqc (see the setup lesson); a Salmon index in ref/salmon_index; FASTQ files in raw/ (download.sh).", "set -euo pipefail", "THREADS=8", "mkdir -p trimmed qc quant", ""];
+      const L = [`# FASTQ download for ${study.acc} (PowerShell). Generated by Reads to Results.`, ...toolkitNote("#"), "# On Windows, install the SRA Toolkit from https://github.com/ncbi/sra-tools/wiki and make sure prefetch.exe and fasterq-dump.exe are on the PATH.", "$ErrorActionPreference = 'Stop'", "$threads = 4", "New-Item -ItemType Directory -Force raw | Out-Null", "Set-Location raw", ""];
       for (const r of sel()) {
-        if (viaSRA) { r.fastq = r.layout === "PAIRED" ? [`${r.run}_1.fastq.gz`, `${r.run}_2.fastq.gz`] : [`${r.run}.fastq.gz`]; }
+        const done = r.layout === "PAIRED" ? `(Test-Path ${r.run}_1.fastq.gz) -and (Test-Path ${r.run}_2.fastq.gz)` : `Test-Path ${r.run}.fastq.gz`;
+        L.push(`# ${r.run}  ${r.title}`, `if (${done}) { Write-Host "${r.run}: already done" } else {`, `  prefetch --max-size u ${r.run}`, `  fasterq-dump ${r.layout === "PAIRED" ? "--split-files " : ""}--threads $threads ${r.run}`, `  Get-ChildItem ${r.run}*.fastq | ForEach-Object { gzip -f $_.FullName }`, `  Remove-Item -Recurse -Force ${r.run} -ErrorAction SilentlyContinue`, `}`, "");
+      }
+      L.push('Write-Host "All runs downloaded."'); return L.join("\n") + "\n";
+    }
+    function salmonScript() {
+      const L = ["#!/usr/bin/env bash", `# fastp + Salmon quantification for ${study.acc}. Generated by Reads to Results.`, "# Needs: conda env with fastp, salmon, multiqc (see the setup lesson); a Salmon index in ref/salmon_index; FASTQ files in raw/ from download.sh.", "set -euo pipefail", "THREADS=8", "mkdir -p trimmed qc quant", ""];
+      for (const r of sel()) {
+        r.fastq = r.layout === "PAIRED" ? [`${r.run}_1.fastq.gz`, `${r.run}_2.fastq.gz`] : [`${r.run}.fastq.gz`];
         if (r.layout === "PAIRED" && r.fastq.length >= 2) { const [a, b] = r.fastq.slice(-2).map((f) => f.split("/").pop()); L.push(`# ${r.run}  ${r.title}`, `fastp --in1 raw/${a} --in2 raw/${b} --out1 trimmed/${r.run}_1.fastq.gz --out2 trimmed/${r.run}_2.fastq.gz --detect_adapter_for_pe --length_required 30 --thread $THREADS --html qc/${r.run}.fastp.html --json qc/${r.run}.fastp.json`, `salmon quant -i ref/salmon_index -l A -1 trimmed/${r.run}_1.fastq.gz -2 trimmed/${r.run}_2.fastq.gz --validateMappings --gcBias --seqBias -p $THREADS -o quant/${r.name}`, ""); }
         else { const a = r.fastq[0]?.split("/").pop(); L.push(`# ${r.run}  ${r.title}`, `fastp --in1 raw/${a} --out1 trimmed/${r.run}.fastq.gz --length_required 30 --thread $THREADS --html qc/${r.run}.fastp.html --json qc/${r.run}.fastp.json`, `salmon quant -i ref/salmon_index -l A -r trimmed/${r.run}.fastq.gz --validateMappings --gcBias --seqBias -p $THREADS -o quant/${r.name}`, ""); }
       }
@@ -278,11 +255,10 @@ const organisms: [string, string][] = [["", "any organism"], ["Homo sapiens", "h
     const flash = (b: HTMLElement, t: string) => { const o = b.textContent; b.textContent = t; b.classList.add("flash"); setTimeout(() => { b.textContent = o; b.classList.remove("flash"); }, 1500); };
     document.querySelectorAll<HTMLButtonElement>("[data-dl]").forEach((b) => b.addEventListener("click", () => {
       const k = b.dataset.dl!; if (!sel().length) return;
-      const map: Record<string, [string, () => string]> = { samples: ["samples.csv", samplesCSV], bash: ["download.sh", bashDownload], ps1: ["download.ps1", psDownload], sra: ["sra.sh", sraScript], salmon: ["quantify.sh", salmonScript] };
+      const map: Record<string, [string, () => string]> = { samples: ["samples.csv", samplesCSV], bash: ["download.sh", bashDownload], ps1: ["download.ps1", psDownload], salmon: ["quantify.sh", salmonScript] };
       dl(map[k][0], map[k][1]()); flash(b, "Saved");
     }));
     form.addEventListener("submit", (e) => { e.preventDefault(); lookup((form.elements.namedItem("acc") as HTMLInputElement).value); });
-    document.querySelectorAll<HTMLInputElement>("[data-src]").forEach((r) => r.addEventListener("change", () => { const a = (form.elements.namedItem("acc") as HTMLInputElement).value.trim(); if (a && (runs.length || status.classList.contains("err"))) lookup(a); }));
     $("[data-example]").addEventListener("click", () => { (form.elements.namedItem("acc") as HTMLInputElement).value = "GSE52778"; lookup("GSE52778"); });
     const q = new URLSearchParams(location.search).get("acc"); if (q) { (form.elements.namedItem("acc") as HTMLInputElement).value = q; lookup(q); }
     // ── GEO search ──────────────────────────────────────────────────────
@@ -348,6 +324,6 @@ const organisms: [string, string][] = [["", "any organism"], ["Homo sapiens", "h
       dl("geo_search_results.csv", csv);
     });
     (window as any).__find = { findPage, get state() { return findState; } };
-    (window as any).__ds = { get runs() { return runs; }, samplesCSV, bashDownload, salmonScript, lookup, sraRuns };
+    (window as any).__ds = { get runs() { return runs; }, samplesCSV, bashDownload, psDownload, salmonScript, lookup, sraRuns };
   </script>
 </Base>
