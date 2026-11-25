@@ -48,7 +48,6 @@ src/pages                 home, Break it, Mistakes, About and the page routes
 src/components            interactive plots (plain SVG/canvas, no dependencies)
 src/i18n/ui.ts            interface text and link helpers
 public/data               downloads, volcano.json, dispersion.json
-public/notebooks          Colab notebook (R runtime)
 ```
 
 ## Licence
